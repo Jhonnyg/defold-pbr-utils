@@ -1,4 +1,46 @@
-@vs vs
+@vs cubemap_vs
+in vec3 position;
+
+uniform cubemap_uniforms
+{
+    mat4 projection;
+    mat4 view;
+};
+
+out vec3 localPos;
+
+void main()
+{
+    localPos = position;
+    gl_Position = projection * view * vec4(position, 1.0);
+}
+@end
+
+@fs cubemap_fs
+out vec4 fragColor;
+
+in vec3 localPos;
+
+uniform sampler2D tex;
+
+const vec2 invAtan = vec2(0.1591, 0.3183);
+vec2 SampleSphericalMap(vec3 v)
+{
+    vec2 uv = vec2(atan(v.z, v.x), asin(v.y));
+    uv *= invAtan;
+    uv += 0.5;
+    return uv;
+}
+
+void main()
+{
+    vec2 uv = SampleSphericalMap(normalize(localPos));
+    vec3 color = texture(tex, uv).rgb;
+    fragColor = vec4(color, 1.0);
+}
+@end
+
+@vs display_vs
 in vec2 position;
 in vec2 texcoord;
 
@@ -11,31 +53,18 @@ void main()
 }
 @end
 
-@fs fs
+@fs display_fs
 out vec4 fragColor;
 
 in vec2 v_texcoord;
 
-uniform sampler2D tex;
+uniform samplerCube tex_cube;
 
 void main()
 {
-    fragColor = texture(tex, v_texcoord);
+    fragColor = texture(tex_cube, vec3(v_texcoord, 1.0));
 }
 @end
 
-@fs display
-out vec4 fragColor;
-
-in vec2 v_texcoord;
-
-uniform sampler2D tex;
-
-void main()
-{
-    fragColor = texture(tex, v_texcoord);
-}
-@end
-
-@program pbr_shader vs fs
-@program pbr_display vs display
+@program pbr_shader cubemap_vs cubemap_fs
+@program pbr_display display_vs display_fs

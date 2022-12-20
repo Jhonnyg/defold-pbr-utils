@@ -41,6 +41,12 @@ if [ ! -f "$PWD/${BUILD_FOLDER}/${STB_IMAGE}" ]; then
 	wget https://raw.githubusercontent.com/nothings/stb/master/${STB_IMAGE} -P ${BUILD_FOLDER}
 fi
 
+LINMATH=linmath.h
+
+if [ ! -f "$PWD/${BUILD_FOLDER}/${LINMATH}" ]; then
+	wget https://raw.githubusercontent.com/datenwolf/linmath.h/master/${LINMATH} -P ${BUILD_FOLDER}
+fi
+
 ${SOKOL_SDHC_CMD} --input assets/shaders.glsl --output src/shaders.glsl.h --slang metal_macos
 
 ./${BUILD_FOLDER}/genie --file=premake.lua gmake
