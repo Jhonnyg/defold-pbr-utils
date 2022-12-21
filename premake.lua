@@ -35,5 +35,5 @@ project "pbr-utils"
         "QuartzCore.framework",
         "Metal.framework",
         "MetalKit.framework",
-        --"OpenGL.framework"
+        "OpenGL.framework"
     }

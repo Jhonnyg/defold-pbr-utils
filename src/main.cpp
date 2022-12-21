@@ -1,7 +1,8 @@
 
 #include "linmath.h"
 
-#define SOKOL_METAL
+//#define SOKOL_METAL
+#define SOKOL_GLCORE33
 #define SOKOL_IMPL
 #include "sokol_app.h"
 #include "sokol_gfx.h"
@@ -9,6 +10,9 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 #include "shaders.glsl.h"
 
@@ -32,98 +36,110 @@ struct app
         sg_pipeline    m_Pipeline;
         sg_image       m_Image;
         sg_bindings    m_Bindings;
-    } m_Offscreen;
+    } m_EnvironmentPass;
 
-    sg_pass_action m_PassAction;
-    sg_pipeline    m_Pipeline;
-    sg_bindings    m_Bindings;
+    struct
+    {
+        sg_pass_action m_PassAction;
+        sg_pass        m_Pass[6];
+        sg_pipeline    m_Pipeline;
+        sg_image       m_Image;
+        sg_bindings    m_Bindings;
+    } m_DiffuseIrradiancePass;
+
+    struct
+    {
+        sg_pass_action m_PassAction;
+        sg_pipeline    m_Pipeline;
+        sg_bindings    m_Bindings;
+    } m_DisplayPass;
 
     mesh_t m_Cube;
     mat4x4 m_CubeViewMatrices[6];
 
     struct
     {
-        int      m_Width;
-        int      m_Height;
-        sg_image m_Image;
-    } m_Texture;
-    const char*    m_InputPath;
-    uint8_t        m_IsDone : 1;
+        const char* m_InputPath;
+        sg_image    m_Image;
+        int         m_Width;
+        int         m_Height;
+    } m_EnvironmentTexture;
+
+    uint8_t m_IsDone : 1;
 } g_app = {};
 
 void make_cube()
 {
     vertex_t vertices[] =  {
-        { { -1.0, -1.0, -1.0 } }, // { 0.0, 0.0, -1.0 } },
-        { {  1.0, -1.0, -1.0 } }, // { 0.0, 0.0, -1.0 } },
-        { {  1.0,  1.0, -1.0 } }, // { 0.0, 0.0, -1.0 } },
-        { { -1.0,  1.0, -1.0 } }, // { 0.0, 0.0, -1.0 } },
-
-        { { -1.0, -1.0,  1.0 } }, // { 0.0, 0.0, 1.0 } },
-        { {  1.0, -1.0,  1.0 } }, // { 0.0, 0.0, 1.0 } },
-        { {  1.0,  1.0,  1.0 } }, // { 0.0, 0.0, 1.0 } },
-        { { -1.0,  1.0,  1.0 } }, // { 0.0, 0.0, 1.0 } },
-
-        { { -1.0, -1.0, -1.0 } }, // { -1.0, 0.0, 0.0 } },
-        { { -1.0,  1.0, -1.0 } }, // { -1.0, 0.0, 0.0 } },
-        { { -1.0,  1.0,  1.0 } }, // { -1.0, 0.0, 0.0 } },
-        { { -1.0, -1.0,  1.0 } }, // { -1.0, 0.0, 0.0 } },
-
-        { { 1.0, -1.0, -1.0, } }, // { 1.0, 0.0, 0.0 } },
-        { { 1.0,  1.0, -1.0, } }, // { 1.0, 0.0, 0.0 } },
-        { { 1.0,  1.0,  1.0, } }, // { 1.0, 0.0, 0.0 } },
-        { { 1.0, -1.0,  1.0, } }, // { 1.0, 0.0, 0.0 } },
-
-        { { -1.0, -1.0, -1.0 } }, // { 0.0, -1.0, 0.0 } },
-        { { -1.0, -1.0,  1.0 } }, // { 0.0, -1.0, 0.0 } },
-        { {  1.0, -1.0,  1.0 } }, // { 0.0, -1.0, 0.0 } },
-        { {  1.0, -1.0, -1.0 } }, // { 0.0, -1.0, 0.0 } },
-
-        { { -1.0,  1.0, -1.0 } }, // { 0.0, 1.0, 0.0 } },
-        { { -1.0,  1.0,  1.0 } }, // { 0.0, 1.0, 0.0 } },
-        { {  1.0,  1.0,  1.0 } }, // { 0.0, 1.0, 0.0 } },
-        { {  1.0,  1.0, -1.0 } }, // { 0.0, 1.0, 0.0 } }
-    };
-    uint16_t indices[] = {
-        0, 1, 2,  0, 2, 3,
-        6, 5, 4,  7, 6, 4,
-        8, 9, 10,  8, 10, 11,
-        14, 13, 12,  15, 14, 12,
-        16, 17, 18,  16, 18, 19,
-        22, 21, 20,  23, 22, 20
+        -1.0f, -1.0f, -1.0f, // bottom-left
+         1.0f,  1.0f, -1.0f, // top-right
+         1.0f, -1.0f, -1.0f, // bottom-right
+         1.0f,  1.0f, -1.0f, // top-right
+        -1.0f, -1.0f, -1.0f, // bottom-left
+        -1.0f,  1.0f, -1.0f, // top-left
+        // front face
+        -1.0f, -1.0f,  1.0f, // bottom-left
+         1.0f, -1.0f,  1.0f, // bottom-right
+         1.0f,  1.0f,  1.0f, // top-right
+         1.0f,  1.0f,  1.0f, // top-right
+        -1.0f,  1.0f,  1.0f, // top-left
+        -1.0f, -1.0f,  1.0f, // bottom-left
+        // left face
+        -1.0f,  1.0f,  1.0f, // top-right
+        -1.0f,  1.0f, -1.0f, // top-left
+        -1.0f, -1.0f, -1.0f, // bottom-left
+        -1.0f, -1.0f, -1.0f, // bottom-left
+        -1.0f, -1.0f,  1.0f, // bottom-right
+        -1.0f,  1.0f,  1.0f, // top-right
+        // right face
+         1.0f,  1.0f,  1.0f, // top-left
+         1.0f, -1.0f, -1.0f, // bottom-right
+         1.0f,  1.0f, -1.0f, // top-right
+         1.0f, -1.0f, -1.0f, // bottom-right
+         1.0f,  1.0f,  1.0f, // top-left
+         1.0f, -1.0f,  1.0f, // bottom-left
+        // bottom face
+        -1.0f, -1.0f, -1.0f, // top-right
+         1.0f, -1.0f, -1.0f, // top-left
+         1.0f, -1.0f,  1.0f, // bottom-left
+         1.0f, -1.0f,  1.0f, // bottom-left
+        -1.0f, -1.0f,  1.0f, // bottom-right
+        -1.0f, -1.0f, -1.0f, // top-right
+        // top face
+        -1.0f,  1.0f, -1.0f, // top-left
+         1.0f,  1.0f , 1.0f, // bottom-right
+         1.0f,  1.0f, -1.0f, // top-right
+         1.0f,  1.0f,  1.0f, // bottom-right
+        -1.0f,  1.0f, -1.0f, // top-left
+        -1.0f,  1.0f,  1.0f, // bottom-left
     };
     mesh_t cube = {
         .vbuf = sg_make_buffer(&(sg_buffer_desc){
             .data = SG_RANGE(vertices),
             .label = "cube-vertices"
         }),
-        .ibuf = sg_make_buffer(&(sg_buffer_desc){
-            .type = SG_BUFFERTYPE_INDEXBUFFER,
-            .data = SG_RANGE(indices),
-            .label = "cube-indices"
-        }),
-        .num_elements = sizeof(indices) / sizeof(uint16_t)
+        .num_elements = 6 * 6,
     };
 
     g_app.m_Cube = cube;
 }
 
-void make_image()
+void make_environment_image()
 {
     /// Load image
     sg_pixel_format pixel_format;
     uint8_t* pixel_data;
     int x,y,ch;
     int pixel_size;
-    if (stbi_is_hdr(g_app.m_InputPath))
+    if (stbi_is_hdr(g_app.m_EnvironmentTexture.m_InputPath))
     {
-        pixel_data   = (uint8_t*) stbi_loadf(g_app.m_InputPath, &x, &y, &ch, 4);
+        pixel_data   = (uint8_t*) stbi_loadf(g_app.m_EnvironmentTexture.m_InputPath, &x, &y, &ch, 4);
         pixel_format = SG_PIXELFORMAT_RGBA32F;
         pixel_size   = x * y * 4 * sizeof(float);
     }
     else
     {
-        pixel_data   = (uint8_t*) stbi_load(g_app.m_InputPath, &x, &y, &ch, 4);
+        pixel_data   = (uint8_t*) stbi_load(g_app.m_EnvironmentTexture.m_InputPath, &x, &y, &ch, 4);
         pixel_format = SG_PIXELFORMAT_RGBA8;
         pixel_size   = x * y * 4 * sizeof(uint8_t);
     }
@@ -140,24 +156,85 @@ void make_image()
         .data         = img_data
     };
 
-    g_app.m_Texture.m_Image  = sg_make_image(&img_desc);
-    g_app.m_Texture.m_Width  = x;
-    g_app.m_Texture.m_Height = y;
+    g_app.m_EnvironmentTexture.m_Image  = sg_make_image(&img_desc);
+    g_app.m_EnvironmentTexture.m_Width  = x;
+    g_app.m_EnvironmentTexture.m_Height = y;
 
     stbi_image_free(pixel_data);
 }
 
-void make_offscreen()
+void make_diffuse_irradiance_pass()
 {
-    g_app.m_Offscreen.m_PassAction = (sg_pass_action) {
+    g_app.m_DiffuseIrradiancePass.m_PassAction = (sg_pass_action) {
         .colors[0] = { .action = SG_ACTION_CLEAR, .value = { 0.25f, 0.25f, 0.25f, 1.0f } }
     };
 
-    sg_image_desc img_desc = {
+    g_app.m_DiffuseIrradiancePass.m_Image = sg_make_image(&(sg_image_desc) {
         .type          = SG_IMAGETYPE_CUBE,
         .render_target = true,
-        .width         = 1024, // g_app.m_Texture.m_Width,
-        .height        = 1024, // g_app.m_Texture.m_Height,
+        .width         = 64,
+        .height        = 64,
+        .pixel_format  = SG_PIXELFORMAT_RGBA8,
+        .min_filter    = SG_FILTER_LINEAR,
+        .mag_filter    = SG_FILTER_LINEAR,
+        .wrap_u        = SG_WRAP_REPEAT,
+        .wrap_v        = SG_WRAP_REPEAT,
+        .label         = "color-image"
+    });
+
+    sg_image depth_img = sg_make_image(&(sg_image_desc) {
+        .type          = SG_IMAGETYPE_2D,
+        .render_target = true,
+        .width         = 64,
+        .height        = 64,
+        .pixel_format  = SG_PIXELFORMAT_DEPTH,
+        .label         = "cubemap-depth-rt"
+    });
+
+    for (int i = 0; i < 6; ++i)
+    {
+        g_app.m_DiffuseIrradiancePass.m_Pass[i] = sg_make_pass(&(sg_pass_desc){
+            .color_attachments[0] = {
+                .image = g_app.m_DiffuseIrradiancePass.m_Image,
+                .slice = i
+            },
+            .depth_stencil_attachment.image = depth_img,
+            .label                          = "offscreen-pass"
+        });
+    }
+
+    g_app.m_DiffuseIrradiancePass.m_Pipeline = sg_make_pipeline(&(sg_pipeline_desc){
+        .shader = sg_make_shader(pbr_diffuse_irradiance_shader_desc(sg_query_backend())),
+        .layout = {
+            .attrs = {
+                [ATTR_cubemap_vs_position].format = SG_VERTEXFORMAT_FLOAT3,
+            },
+        },
+        .depth = {
+            .pixel_format  = SG_PIXELFORMAT_DEPTH,
+            .compare       = SG_COMPAREFUNC_LESS_EQUAL,
+            .write_enabled = true,
+        },
+        .colors[0].pixel_format = SG_PIXELFORMAT_RGBA8,
+        .cull_mode              = SG_CULLMODE_NONE,
+        .label                  = "pipeline_fullscreen"
+    });
+
+    g_app.m_DiffuseIrradiancePass.m_Bindings.vertex_buffers[0] = g_app.m_Cube.vbuf;
+    //g_app.m_DiffuseIrradiancePass.m_Bindings.index_buffer      = g_app.m_Cube.ibuf;
+}
+
+void make_environment_pass()
+{
+    g_app.m_EnvironmentPass.m_PassAction = (sg_pass_action) {
+        .colors[0] = { .action = SG_ACTION_CLEAR, .value = { 0.25f, 0.25f, 0.25f, 1.0f } }
+    };
+
+    g_app.m_EnvironmentPass.m_Image = sg_make_image(&(sg_image_desc) {
+        .type          = SG_IMAGETYPE_CUBE,
+        .render_target = true,
+        .width         = 1024, // g_app.m_EnvironmentTexture.m_Width,
+        .height        = 1024, // g_app.m_EnvironmentTexture.m_Height,
         .pixel_format  = SG_PIXELFORMAT_RGBA8,
         .min_filter    = SG_FILTER_LINEAR,
         .mag_filter    = SG_FILTER_LINEAR,
@@ -165,60 +242,54 @@ void make_offscreen()
         .wrap_v        = SG_WRAP_REPEAT,
         .sample_count  = 4,
         .label         = "color-image"
-    };
-
-    g_app.m_Offscreen.m_Image = sg_make_image(&img_desc);
+    });
 
     sg_image depth_img = sg_make_image(&(sg_image_desc) {
-        .type = SG_IMAGETYPE_2D,
+        .type          = SG_IMAGETYPE_2D,
         .render_target = true,
-        .width = 1024,
-        .height = 1024,
-        .pixel_format = SG_PIXELFORMAT_DEPTH,
-        .sample_count = 4,
-        .label = "cubemap-depth-rt"
+        .width         = 1024,
+        .height        = 1024,
+        .pixel_format  = SG_PIXELFORMAT_DEPTH,
+        .sample_count  = 4,
+        .label         = "cubemap-depth-rt"
     });
 
     for (int i = 0; i < 6; ++i)
     {
-        g_app.m_Offscreen.m_Pass[i] = sg_make_pass(&(sg_pass_desc){
+        g_app.m_EnvironmentPass.m_Pass[i] = sg_make_pass(&(sg_pass_desc){
             .color_attachments[0] = {
-                .image = g_app.m_Offscreen.m_Image,
+                .image = g_app.m_EnvironmentPass.m_Image,
                 .slice = i
             },
-            //.color_attachments[0].image     = g_app.m_Offscreen.m_Image,
             .depth_stencil_attachment.image = depth_img,
             .label                          = "offscreen-pass"
         });
     }
 
-    g_app.m_Offscreen.m_Pipeline = sg_make_pipeline(&(sg_pipeline_desc){
+    g_app.m_EnvironmentPass.m_Pipeline = sg_make_pipeline(&(sg_pipeline_desc){
         .shader = sg_make_shader(pbr_shader_shader_desc(sg_query_backend())),
         .layout = {
             .attrs = {
                 [ATTR_cubemap_vs_position].format = SG_VERTEXFORMAT_FLOAT3,
-                //[ATTR_vs_texcoord].format = SG_VERTEXFORMAT_FLOAT2,
             },
         },
         .depth = {
-            .pixel_format = SG_PIXELFORMAT_DEPTH,
-            .compare = SG_COMPAREFUNC_LESS_EQUAL,
+            .pixel_format  = SG_PIXELFORMAT_DEPTH,
+            .compare       = SG_COMPAREFUNC_LESS_EQUAL,
             .write_enabled = true,
         },
-        .index_type = SG_INDEXTYPE_UINT16,
         .colors[0].pixel_format = SG_PIXELFORMAT_RGBA8,
-        .sample_count = 4,
-        .cull_mode = SG_CULLMODE_NONE,
-        .label = "pipeline_fullscreen"
+        .sample_count           = 4,
+        .cull_mode              = SG_CULLMODE_NONE,
+        .label                  = "pipeline_fullscreen"
     });
 
-    g_app.m_Offscreen.m_Bindings.vertex_buffers[0] = g_app.m_Cube.vbuf;
-    g_app.m_Offscreen.m_Bindings.index_buffer = g_app.m_Cube.ibuf;
+    g_app.m_EnvironmentPass.m_Bindings.vertex_buffers[0] = g_app.m_Cube.vbuf;
 }
 
-void make_display(void)
+void make_display_pass(void)
 {
-    g_app.m_PassAction = (sg_pass_action) {
+    g_app.m_DisplayPass.m_PassAction = (sg_pass_action) {
         .colors[0] = {
             .action=SG_ACTION_CLEAR,
             .value={0.0f, 0.0f, 0.0f, 1.0f}
@@ -235,12 +306,12 @@ void make_display(void)
          1.0f, -1.0f, 1.0f, 0.0f,
     };
 
-    g_app.m_Bindings.vertex_buffers[0] = sg_make_buffer(&(sg_buffer_desc){
+    g_app.m_DisplayPass.m_Bindings.vertex_buffers[0] = sg_make_buffer(&(sg_buffer_desc){
         .data = SG_RANGE(vertices),
         .label = "triangle-vertices",
     });
 
-    g_app.m_Pipeline = sg_make_pipeline(&(sg_pipeline_desc){
+    g_app.m_DisplayPass.m_Pipeline = sg_make_pipeline(&(sg_pipeline_desc){
         .shader = sg_make_shader(pbr_display_shader_desc(sg_query_backend())),
         .layout = {
             .attrs = {
@@ -272,28 +343,50 @@ void make_uniforms()
     #undef SET_VIEW_MATRIX
 }
 
-void init(void)
+static void _sg_gl_query_image_pixels(_sg_image_t* img, void* pixels, int side)
 {
-    sg_setup(&(sg_desc) {
-        .context = sapp_sgcontext()
-    });
+    //SOKOL_ASSERT(img->gl.target == GL_TEXTURE_2D);
+    SOKOL_ASSERT(0 != img->gl.tex[img->cmn.active_slot]);
+#if defined(SOKOL_GLCORE33)
+    _sg_gl_cache_store_texture_binding(0);
+    _sg_gl_cache_bind_texture(0, img->gl.target, img->gl.tex[img->cmn.active_slot]);
+    glGetTexImage(GL_TEXTURE_CUBE_MAP_POSITIVE_X + side, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    _SG_GL_CHECK_ERROR();
+    _sg_gl_cache_restore_texture_binding(0);
+#endif
+}
 
-    make_display();
-    make_cube();
-    make_image();
-    make_offscreen();
-    make_uniforms();
+void sg_query_image_pixels(sg_image img_id, void* pixels, int size, int side)
+{
+    SOKOL_ASSERT(pixels);
+    SOKOL_ASSERT(img_id.id != SG_INVALID_ID);
+    _sg_image_t* img = _sg_lookup_image(&_sg.pools, img_id.id);
+    SOKOL_ASSERT(img);
+    SOKOL_ASSERT(size >= (img->cmn.width * img->cmn.height * 4));
+    _SOKOL_UNUSED(size);
+    _sg_gl_query_image_pixels(img, pixels, side);
+}
+
+void write_side(int side)
+{
+    uint32_t pixel_count = 64 * 64 * 4;
+    uint8_t* pixels = malloc(pixel_count * sizeof(uint8_t));
+
+    sg_query_image_pixels(g_app.m_DiffuseIrradiancePass.m_Image, pixels, pixel_count, side);
+
+    char path_buffer[128];
+
+    sprintf(path_buffer, "debug_%d.png", side);
+
+    if (!stbi_write_png(path_buffer, 64, 64, 4, pixels, 64 * 4))
+    {
+        printf("Failed to write debug texture\n");
+    }
+    free(pixels);
 }
 
 void frame(void)
 {
-    if (g_app.m_IsDone)
-    {
-        //return;
-    }
-
-    g_app.m_Offscreen.m_Bindings.fs_images[SLOT_tex] = g_app.m_Texture.m_Image;
-
     mat4x4 projection;
 #define DEG_TO_RAD(d) (d * (3.14159265359/180.0))
     mat4x4_perspective(projection, DEG_TO_RAD(90), 1.0f, 0.1f, 10.0f);
@@ -301,25 +394,53 @@ void frame(void)
     memcpy(&cubemap_uniforms.projection, projection, sizeof(mat4x4));
 #undef DEG_TO_RAD
 
-    // Generate cubemap sides
-    for (int i = 0; i < 6; ++i)
+    if (!g_app.m_IsDone)
     {
-        memcpy(&cubemap_uniforms.view, g_app.m_CubeViewMatrices[i], sizeof(mat4x4));
+        g_app.m_EnvironmentPass.m_Bindings.fs_images[SLOT_tex] = g_app.m_EnvironmentTexture.m_Image;
 
-        sg_begin_pass(g_app.m_Offscreen.m_Pass[i], &g_app.m_Offscreen.m_PassAction);
-        sg_apply_pipeline(g_app.m_Offscreen.m_Pipeline);
-        sg_apply_bindings(&g_app.m_Offscreen.m_Bindings);
-        sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms, &SG_RANGE(cubemap_uniforms));
+        // Generate cubemap sides
+        for (int i = 0; i < 6; ++i)
+        {
+            memcpy(&cubemap_uniforms.view, g_app.m_CubeViewMatrices[i], sizeof(mat4x4));
 
-        sg_draw(0, g_app.m_Cube.num_elements, 1);
-        sg_end_pass();
+            sg_begin_pass(g_app.m_EnvironmentPass.m_Pass[i], &g_app.m_EnvironmentPass.m_PassAction);
+            sg_apply_pipeline(g_app.m_EnvironmentPass.m_Pipeline);
+            sg_apply_bindings(&g_app.m_EnvironmentPass.m_Bindings);
+            sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms, &SG_RANGE(cubemap_uniforms));
+
+            sg_draw(0, g_app.m_Cube.num_elements, 1);
+            sg_end_pass();
+        }
+
+        g_app.m_DiffuseIrradiancePass.m_Bindings.fs_images[SLOT_env_map] = g_app.m_EnvironmentPass.m_Image;
+
+        // Generate cubemap sides
+        for (int i = 0; i < 6; ++i)
+        {
+            memcpy(&cubemap_uniforms.view, g_app.m_CubeViewMatrices[i], sizeof(mat4x4));
+
+            sg_begin_pass(g_app.m_DiffuseIrradiancePass.m_Pass[i], &g_app.m_DiffuseIrradiancePass.m_PassAction);
+            sg_apply_pipeline(g_app.m_DiffuseIrradiancePass.m_Pipeline);
+            sg_apply_bindings(&g_app.m_DiffuseIrradiancePass.m_Bindings);
+            sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms, &SG_RANGE(cubemap_uniforms));
+
+            sg_draw(0, g_app.m_Cube.num_elements, 1);
+            sg_end_pass();
+        }
+
+        write_side(0);
+        write_side(1);
+        write_side(2);
+        write_side(3);
+        write_side(4);
+        write_side(5);
     }
 
     // Display pass
-    g_app.m_Bindings.fs_images[SLOT_tex] = g_app.m_Offscreen.m_Image;
-    sg_begin_default_pass(&g_app.m_PassAction, sapp_width(), sapp_height());
-    sg_apply_pipeline(g_app.m_Pipeline);
-    sg_apply_bindings(&g_app.m_Bindings);
+    g_app.m_DisplayPass.m_Bindings.fs_images[SLOT_tex] = g_app.m_DiffuseIrradiancePass.m_Image;
+    sg_begin_default_pass(&g_app.m_DisplayPass.m_PassAction, sapp_width(), sapp_height());
+    sg_apply_pipeline(g_app.m_DisplayPass.m_Pipeline);
+    sg_apply_bindings(&g_app.m_DisplayPass.m_Bindings);
     sg_draw(0, 6, 1);
     sg_end_pass();
 
@@ -334,6 +455,20 @@ void cleanup(void)
     sg_shutdown();
 }
 
+void init(void)
+{
+    sg_setup(&(sg_desc) {
+        .context = sapp_sgcontext()
+    });
+
+    make_display_pass();
+    make_cube();
+    make_environment_image();
+    make_environment_pass();
+    make_diffuse_irradiance_pass();
+    make_uniforms();
+}
+
 sapp_desc sokol_main(int argc, char* argv[])
 {
     if (argc <= 1)
@@ -342,7 +477,7 @@ sapp_desc sokol_main(int argc, char* argv[])
         exit(-1);
     }
 
-    g_app.m_InputPath = argv[1];
+    g_app.m_EnvironmentTexture.m_InputPath = argv[1];
 
     return (sapp_desc)
     {
