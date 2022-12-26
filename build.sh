@@ -52,7 +52,14 @@ if [ ! -f "$PWD/${BUILD_FOLDER}/${LINMATH}" ]; then
 	wget https://raw.githubusercontent.com/datenwolf/linmath.h/master/${LINMATH} -P ${BUILD_FOLDER}
 fi
 
-${SOKOL_SDHC_CMD} --input assets/shaders.glsl --output src/shaders.glsl.h --slang  glsl330 #--slang metal_macos
+SJON=sjson.h
+
+if [ ! -f "$PWD/${BUILD_FOLDER}/${SJON}" ]; then
+	wget https://raw.githubusercontent.com/septag/sjson/master/${SJON} -P ${BUILD_FOLDER}
+fi
+
+${SOKOL_SDHC_CMD} --input assets/shaders.glsl --output src/shaders.metal.h --slang metal_macos
+${SOKOL_SDHC_CMD} --input assets/shaders.glsl --output src/shaders.glsl.h --slang glsl330
 
 ./${BUILD_FOLDER}/genie --file=premake.lua gmake
 

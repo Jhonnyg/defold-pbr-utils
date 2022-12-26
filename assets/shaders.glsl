@@ -204,12 +204,12 @@ void main()
         if(NdotL > 0.0)
         {
             // sample from the environment's mip level based on roughness/pdf
-            float D   = DistributionGGX(N, H, roughness);
+            float D     = DistributionGGX(N, H, roughness);
             float NdotH = max(dot(N, H), 0.0);
             float HdotV = max(dot(H, V), 0.0);
             float pdf = D * NdotH / (4.0 * HdotV) + 0.0001;
 
-            float resolution = 512.0; // resolution of source cubemap (per face)
+            float resolution = 1024.0; // resolution of source cubemap (per face)
             float saTexel  = 4.0 * PI / (6.0 * resolution * resolution);
             float saSample = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001);
 
@@ -362,7 +362,7 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 // ----------------------------------------------------------------------------
 vec2 IntegrateBRDF(float NdotV, float roughness)
 {
-    vec3 V;
+    vec3 V = vec3(0.0);
     V.x = sqrt(1.0 - NdotV*NdotV);
     V.y = 0.0;
     V.z = NdotV;
