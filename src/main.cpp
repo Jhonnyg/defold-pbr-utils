@@ -524,7 +524,7 @@ static void make_environment_pass()
 
     g_app.m_EnvironmentPass.m_Image = sg_make_image(&environment_pass_image_desc);
 
-    sg_image_desc depth_img_desc {
+    sg_image_desc depth_img_desc = {
         .type          = SG_IMAGETYPE_2D,
         .render_target = true,
         .width         = g_app.m_EnvironmentPass.m_Size,
