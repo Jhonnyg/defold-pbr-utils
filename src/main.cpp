@@ -911,7 +911,7 @@ void frame(void)
         //////////////////////////////////////////////////////////////////////
         write_output_data();
 
-    #if 1
+    #if 0
         /*
         for (int mip = 0; mip < num_mipmaps; ++mip)
         {
