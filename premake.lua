@@ -6,7 +6,10 @@ function get_platform_config()
     local my_os = os.get()
     if my_os == "windows" then
         return {
-            build_options = function() end,
+            buildoptions = function() end,
+            linkoptions = function()
+                linkoptions { "-static" }
+            end,
             links = function()
 
                 links {
@@ -18,9 +21,10 @@ function get_platform_config()
         }
     elseif my_os == "macosx" then
         return {
-            build_options = function()
+            buildoptions = function()
                 buildoptions {"-ObjC"}
             end,
+            linkoptions = function() end,
             links = function()
                 links {
                     "CoreFoundation.framework",
@@ -51,7 +55,7 @@ solution "pbr-utils"
     flags          { "NoPCH"} -- "FatalWarnings", "StaticRuntime"
     buildoptions   { "-Wno-switch"}
 
-    platform.build_options()
+    platform.buildoptions()
 
     configuration "Debug"
         defines { "DEBUG" }
@@ -69,4 +73,5 @@ project "pbr-utils"
     files       { path.join(PATH_SRC, "**.cpp") }
     includedirs { PATH_SRC, PATH_BUILD }
 
+    platform.linkoptions()
     platform.links()
