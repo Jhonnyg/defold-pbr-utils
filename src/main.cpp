@@ -29,10 +29,17 @@
 #endif
 
 #if defined(_WIN32)
-    typedef void (__stdcall * PFN_GLGETTEXIMAGEPROC)    (GLenum, GLint, GLenum, GLenum, void*);
-    typedef void (__stdcall * PFN_GLGENERATEMIPMAPPROC) (GLenum);
-    PFN_GLGETTEXIMAGEPROC    glGetTexImage    = NULL;
-    PFN_GLGENERATEMIPMAPPROC glGenerateMipmap = NULL;
+    typedef PROC (WINAPI * PFN_WGLGETPROCADDRESSPROC)(LPCSTR);
+    typedef void (WINAPI * PFN_GLGETTEXIMAGEPROC)    (GLenum, GLint, GLenum, GLenum, void*);
+    typedef void (WINAPI * PFN_GLGENERATEMIPMAPPROC) (GLenum);
+
+    // OpenGL DLL functions
+    static HINSTANCE g_opengl32_dll                      = 0;
+    static PFN_WGLGETPROCADDRESSPROC g_wglGetProcAddress = 0;
+
+    // GL Functions
+    static PFN_GLGETTEXIMAGEPROC    glGetTexImage    = NULL;
+    static PFN_GLGENERATEMIPMAPPROC glGenerateMipmap = NULL;
 #endif
 
 typedef struct
@@ -948,9 +955,53 @@ void frame(void)
     g_app.m_IsDone = 1;
 }
 
+void cleanup_platform()
+{
+#ifdef _WIN32
+    FreeLibrary(g_opengl32_dll);
+#endif
+}
+
 void cleanup(void)
 {
+    cleanup_platform();
     sg_shutdown();
+}
+
+bool init_platform()
+{
+#if defined(_WIN32)
+
+    #define GET_PROC_ADDRESS(function, name, type) \
+        function = (type) g_wglGetProcAddress(name);\
+        if (function == 0x0)\
+        {\
+            function = (type) g_wglGetProcAddress(name "ARB");\
+        }\
+        if (function == 0x0)\
+        {\
+            function = (type) g_wglGetProcAddress(name "EXT");\
+        }\
+        if (function == 0x0)\
+        {\
+            function = (type) GetProcAddress(g_opengl32_dll, name);\
+        }\
+        if (function == 0x0)\
+        {\
+            printf("Could not find gl function '%s'.\n", name);\
+        }
+
+    g_opengl32_dll      = LoadLibraryA("opengl32.dll");
+    g_wglGetProcAddress = (PFN_WGLGETPROCADDRESSPROC) GetProcAddress(g_opengl32_dll, "wglGetProcAddress");
+
+    GET_PROC_ADDRESS(glGetTexImage,    "glGetTexImage",    PFN_GLGETTEXIMAGEPROC);
+    GET_PROC_ADDRESS(glGenerateMipmap, "glGenerateMipmap", PFN_GLGENERATEMIPMAPPROC);
+    #undef GET_PROC_ADDRESS
+
+    return glGetTexImage != 0x0 && glGenerateMipmap != 0x0;
+#else
+    return true;
+#endif
 }
 
 void init(void)
@@ -962,14 +1013,21 @@ void init(void)
 
     sg_setup(&app_desc);
 
-    make_display_pass();
-    make_cube();
-    make_environment_image();
-    make_environment_pass();
-    make_diffuse_irradiance_pass();
-    make_prefilter_pass();
-    make_brdf_lut_pass();
-    make_uniforms();
+    if (init_platform())
+    {
+        make_display_pass();
+        make_cube();
+        make_environment_image();
+        make_environment_pass();
+        make_diffuse_irradiance_pass();
+        make_prefilter_pass();
+        make_brdf_lut_pass();
+        make_uniforms();
+    }
+    else
+    {
+        printf("Unable to initialize, check console for errors!\n");
+    }
 }
 
 sapp_desc sokol_main(int argc, char* argv[])
