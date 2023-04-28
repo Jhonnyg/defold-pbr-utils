@@ -295,19 +295,16 @@ static void make_brdf_lut_pass()
     };
 
     brdf_lut_pass_desc.depth_stencil_attachment.image = depth_img;
-
-    brdf_lut_pass_desc.color_attachments[0] = {
-        .image = g_app.m_BRDFLutPass.m_Image,
-        .slice = 0
-    };
+    brdf_lut_pass_desc.color_attachments[0].image = g_app.m_BRDFLutPass.m_Image;
+    brdf_lut_pass_desc.color_attachments[0].slice = 0;
 
     g_app.m_BRDFLutPass.m_Pass = sg_make_pass(&brdf_lut_pass_desc);
 
-    g_app.m_BRDFLutPass.m_PassAction           = {};
-    g_app.m_BRDFLutPass.m_PassAction.colors[0] = {
-        .action = SG_ACTION_CLEAR,
-        .value  = {0.0f, 0.0f, 0.0f, 1.0f}
-    };
+    g_app.m_BRDFLutPass.m_PassAction.colors[0].action  = SG_ACTION_CLEAR;
+    g_app.m_BRDFLutPass.m_PassAction.colors[0].value.r = 0.0f;
+    g_app.m_BRDFLutPass.m_PassAction.colors[0].value.g = 0.0f;
+    g_app.m_BRDFLutPass.m_PassAction.colors[0].value.b = 0.0f;
+    g_app.m_BRDFLutPass.m_PassAction.colors[0].value.a = 1.0f;
 
     float vertices[] = {
         -1.0f, -1.0f, 0.0f, 0.0f,
@@ -350,11 +347,11 @@ static void make_prefilter_pass()
     g_app.m_PrefilterPass.m_Size        = 256;
     g_app.m_PrefilterPass.m_MipmapCount = 1 + floor(log2(g_app.m_PrefilterPass.m_Size));
 
-    g_app.m_PrefilterPass.m_PassAction           = {};
-    g_app.m_PrefilterPass.m_PassAction.colors[0] = {
-        .action = SG_ACTION_CLEAR,
-        .value = { 0.25f, 0.25f, 0.25f, 1.0f }
-    };
+    g_app.m_PrefilterPass.m_PassAction.colors[0].action  = SG_ACTION_CLEAR;
+    g_app.m_PrefilterPass.m_PassAction.colors[0].value.r = 0.0f;
+    g_app.m_PrefilterPass.m_PassAction.colors[0].value.g = 0.0f;
+    g_app.m_PrefilterPass.m_PassAction.colors[0].value.b = 0.0f;
+    g_app.m_PrefilterPass.m_PassAction.colors[0].value.a = 1.0f;
 
     sg_image_desc prefilter_pass_img_desc = {
         .type          = SG_IMAGETYPE_CUBE,
@@ -395,11 +392,9 @@ static void make_prefilter_pass()
                 .label = "offscreen-pass"
             };
             prefilter_pass_desc.depth_stencil_attachment.image = depth_img;
-            prefilter_pass_desc.color_attachments[0] = {
-                .image     = g_app.m_PrefilterPass.m_Image,
-                .mip_level = mipmap,
-                .slice     = i,
-            };
+            prefilter_pass_desc.color_attachments[0].image     = g_app.m_PrefilterPass.m_Image,
+            prefilter_pass_desc.color_attachments[0].mip_level = mipmap,
+            prefilter_pass_desc.color_attachments[0].slice     = i,
 
             g_app.m_PrefilterPass.m_Pass[pass_index] = sg_make_pass(&prefilter_pass_desc);
 
@@ -431,13 +426,13 @@ static void make_prefilter_pass()
 static void make_diffuse_irradiance_pass()
 {
     g_app.m_DiffuseIrradiancePass.m_Size = 64;
-    g_app.m_DiffuseIrradiancePass.m_PassAction = {};
-    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0] = {
-        .action = SG_ACTION_CLEAR,
-        .value  = { 0.25f, 0.25f, 0.25f, 1.0f }
-    };
+    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].action  = SG_ACTION_CLEAR;
+    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].value.r = 0.25f;
+    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].value.g = 0.25f;
+    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].value.b = 0.25f;
+    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].value.a = 1.0f;
 
-    sg_image_desc diffuse_irridance_img_desc {
+    sg_image_desc diffuse_irridance_img_desc = {
         .type          = SG_IMAGETYPE_CUBE,
         .render_target = true,
         .width         = g_app.m_DiffuseIrradiancePass.m_Size,
@@ -471,10 +466,8 @@ static void make_diffuse_irradiance_pass()
         };
 
         diffuse_irradiance_pass_desc.depth_stencil_attachment.image = depth_img;
-        diffuse_irradiance_pass_desc.color_attachments[0] = {
-            .image = g_app.m_DiffuseIrradiancePass.m_Image,
-            .slice = i
-        },
+        diffuse_irradiance_pass_desc.color_attachments[0].image = g_app.m_DiffuseIrradiancePass.m_Image;
+        diffuse_irradiance_pass_desc.color_attachments[0].slice = i;
 
         g_app.m_DiffuseIrradiancePass.m_Pass[i] = sg_make_pass(&diffuse_irradiance_pass_desc);
     }
@@ -501,12 +494,12 @@ static void make_diffuse_irradiance_pass()
 
 static void make_environment_pass()
 {
-    g_app.m_EnvironmentPass.m_Size                 = 1024;
-    g_app.m_EnvironmentPass.m_PassAction           = {};
-    g_app.m_EnvironmentPass.m_PassAction.colors[0] = {
-        .action = SG_ACTION_CLEAR,
-        .value  = { 0.25f, 0.25f, 0.25f, 1.0f }
-    };
+    g_app.m_EnvironmentPass.m_Size                         = 1024;
+    g_app.m_EnvironmentPass.m_PassAction.colors[0].action  = SG_ACTION_CLEAR;
+    g_app.m_EnvironmentPass.m_PassAction.colors[0].value.r = 0.25f;
+    g_app.m_EnvironmentPass.m_PassAction.colors[0].value.g = 0.25f;
+    g_app.m_EnvironmentPass.m_PassAction.colors[0].value.b = 0.25f;
+    g_app.m_EnvironmentPass.m_PassAction.colors[0].value.a = 1.0f;
 
     sg_image_desc environment_pass_image_desc = {
         .type          = SG_IMAGETYPE_CUBE,
@@ -543,10 +536,8 @@ static void make_environment_pass()
         };
 
         environment_pass_desc.depth_stencil_attachment.image = depth_img;
-        environment_pass_desc.color_attachments[0] = {
-                .image = g_app.m_EnvironmentPass.m_Image,
-                .slice = i
-        };
+        environment_pass_desc.color_attachments[0].image = g_app.m_EnvironmentPass.m_Image;
+        environment_pass_desc.color_attachments[0].slice = i;
 
         g_app.m_EnvironmentPass.m_Pass[i] = sg_make_pass(&environment_pass_desc);
     }
@@ -572,11 +563,11 @@ static void make_environment_pass()
 
 static void make_display_pass(void)
 {
-    g_app.m_DisplayPass.m_PassAction           = {};
-    g_app.m_DisplayPass.m_PassAction.colors[0] = {
-        .action=SG_ACTION_CLEAR,
-        .value={0.0f, 0.0f, 0.0f, 1.0f}
-    };
+    g_app.m_DisplayPass.m_PassAction.colors[0].action = SG_ACTION_CLEAR;
+    g_app.m_DisplayPass.m_PassAction.colors[0].value.r = 0.0f;
+    g_app.m_DisplayPass.m_PassAction.colors[0].value.g = 0.0f;
+    g_app.m_DisplayPass.m_PassAction.colors[0].value.b = 0.0f;
+    g_app.m_DisplayPass.m_PassAction.colors[0].value.a = 1.0f;
 
     float vertices[] = {
         -1.0f, -1.0f, 0.0f, 0.0f,
@@ -920,7 +911,8 @@ void frame(void)
         //////////////////////////////////////////////////////////////////////
         write_output_data();
 
-    #if 0
+    #if 1
+        /*
         for (int mip = 0; mip < num_mipmaps; ++mip)
         {
             for (int i = 0; i < 6; ++i)
@@ -928,6 +920,7 @@ void frame(void)
                 write_prefilter(i, mip);
             }
         }
+        */
 
         write_side(0);
         write_side(1);
