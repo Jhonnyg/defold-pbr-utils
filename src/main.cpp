@@ -46,10 +46,17 @@
 #endif
 
 // Error message numbers
-static int PARAMS_RESULT_OK                         =  1;
-static int PARAMS_RESULT_INCORRECT_INPUT            = -1;
-static int PARAMS_RESULT_INCORRECT_OUTPUT_DIRECTORY = -2;
-static int PARAMS_RESULT_SHOW_HELP                  = -3;
+static const int PARAMS_RESULT_OK                         =  1;
+static const int PARAMS_RESULT_INCORRECT_INPUT            = -1;
+static const int PARAMS_RESULT_INCORRECT_OUTPUT_DIRECTORY = -2;
+static const int PARAMS_RESULT_SHOW_HELP                  = -3;
+static const int PARAMS_RESULT_INVALID_GENERATION_MASK    = -4;
+
+static const int GENERATE_NONE                     = 0;
+static const int GENERATE_BRDF_LUT                 = 1;
+static const int GENERATE_DIFFUSE_IRRADIANCE       = 2;
+static const int GENERATE_PREFILTERED_ENVIRONMENT  = 4;
+static const int GENERATE_ALL                      = GENERATE_BRDF_LUT | GENERATE_DIFFUSE_IRRADIANCE | GENERATE_PREFILTERED_ENVIRONMENT;
 
 typedef struct
 {
@@ -67,6 +74,7 @@ typedef struct
 {
     const char* m_PathInput;
     const char* m_PathDirectory;
+    int         m_GenerateMask;
     bool        m_Verbose;
     bool        m_Preview;
 } app_params;
@@ -745,11 +753,12 @@ void write_output_data()
     };
 
     // Generate diffuse irradiance buffers
+    if (g_app.m_Params.m_GenerateMask & GENERATE_DIFFUSE_IRRADIANCE)
     {
         char output_path_irridance[256];
         sprintf(output_path_irridance, "%s/irradiance.bin", g_app.m_Params.m_PathDirectory);
 
-        LOG_VERBOSE("Writing irradiance images to %s*\n", output_path_irridance);
+        LOG_INFO("Writing irradiance images to %s*\n", output_path_irridance);
 
         // buffer for each individual side
         uint32_t data_size_side = g_app.m_DiffuseIrradiancePass.m_Size * g_app.m_DiffuseIrradiancePass.m_Size * 4 * sizeof(float);
@@ -775,11 +784,12 @@ void write_output_data()
     }
 
     // Generate prefilter buffers
+    if (g_app.m_Params.m_GenerateMask & GENERATE_PREFILTERED_ENVIRONMENT)
     {
         char output_path_prefiter_base[256];
         sprintf(output_path_prefiter_base, "%s/prefilter", g_app.m_Params.m_PathDirectory);
 
-        LOG_VERBOSE("Writing prefilter images to %s*\n", output_path_prefiter_base);
+        LOG_INFO("Writing prefilter images to %s*\n", output_path_prefiter_base);
 
         // buffer for each individual side
         uint32_t data_size_side = g_app.m_PrefilterPass.m_Size * g_app.m_PrefilterPass.m_Size * 4 * sizeof(float);
@@ -813,10 +823,11 @@ void write_output_data()
     }
 
     // Generate BRDF buffer
+    if (g_app.m_Params.m_GenerateMask & GENERATE_BRDF_LUT)
     {
         char output_path_brdf_lut[256];
         sprintf(output_path_brdf_lut, "%s/brdf_lut.bin", g_app.m_Params.m_PathDirectory);
-        LOG_VERBOSE("Writing BRDF Lut to %s\n", output_path_brdf_lut);
+        LOG_INFO("Writing BRDF Lut to %s\n", output_path_brdf_lut);
 
         uint32_t pixel_count    = g_app.m_BRDFLutPass.m_Size * g_app.m_BRDFLutPass.m_Size * 4;
         float* pixels           = (float*) malloc(pixel_count * sizeof(float));
@@ -862,67 +873,80 @@ void frame(void)
         //////////////////////////////////////////////////////////////////////
         // Diffuse irradiance pass
         //////////////////////////////////////////////////////////////////////
-        g_app.m_DiffuseIrradiancePass.m_Bindings.fs_images[SLOT_env_map] = g_app.m_EnvironmentPass.m_Image;
-        for (int i = 0; i < 6; ++i)
+
+        if (g_app.m_Params.m_GenerateMask & GENERATE_DIFFUSE_IRRADIANCE)
         {
-            memcpy(&cubemap_uniforms.view, g_app.m_CubeViewMatrices[i], sizeof(mat4x4));
+            LOG_INFO("Generating diffuse irradiance\n");
+            g_app.m_DiffuseIrradiancePass.m_Bindings.fs_images[SLOT_env_map] = g_app.m_EnvironmentPass.m_Image;
+            for (int i = 0; i < 6; ++i)
+            {
+                memcpy(&cubemap_uniforms.view, g_app.m_CubeViewMatrices[i], sizeof(mat4x4));
 
-            sg_range cubemap_uniform_data = SG_RANGE(cubemap_uniforms);
+                sg_range cubemap_uniform_data = SG_RANGE(cubemap_uniforms);
 
-            sg_begin_pass(g_app.m_DiffuseIrradiancePass.m_Pass[i], &g_app.m_DiffuseIrradiancePass.m_PassAction);
-            sg_apply_pipeline(g_app.m_DiffuseIrradiancePass.m_Pipeline);
-            sg_apply_bindings(&g_app.m_DiffuseIrradiancePass.m_Bindings);
-            sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms, &cubemap_uniform_data);
+                sg_begin_pass(g_app.m_DiffuseIrradiancePass.m_Pass[i], &g_app.m_DiffuseIrradiancePass.m_PassAction);
+                sg_apply_pipeline(g_app.m_DiffuseIrradiancePass.m_Pipeline);
+                sg_apply_bindings(&g_app.m_DiffuseIrradiancePass.m_Bindings);
+                sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms, &cubemap_uniform_data);
 
-            sg_draw(0, g_app.m_Cube.num_elements, 1);
-            sg_end_pass();
+                sg_draw(0, g_app.m_Cube.num_elements, 1);
+                sg_end_pass();
+            }
         }
 
         //////////////////////////////////////////////////////////////////////
         // BRDF Lookup table pass
         //////////////////////////////////////////////////////////////////////
-        sg_begin_pass(g_app.m_BRDFLutPass.m_Pass, &g_app.m_BRDFLutPass.m_PassAction);
-        sg_apply_pipeline(g_app.m_BRDFLutPass.m_Pipeline);
-        sg_apply_bindings(&g_app.m_BRDFLutPass.m_Bindings);
-        sg_draw(0, 6, 1);
-        sg_end_pass();
-
+        if (g_app.m_Params.m_GenerateMask & GENERATE_BRDF_LUT)
+        {
+            LOG_INFO("Generating BRDF Lut\n");
+            sg_begin_pass(g_app.m_BRDFLutPass.m_Pass, &g_app.m_BRDFLutPass.m_PassAction);
+            sg_apply_pipeline(g_app.m_BRDFLutPass.m_Pipeline);
+            sg_apply_bindings(&g_app.m_BRDFLutPass.m_Bindings);
+            sg_draw(0, 6, 1);
+            sg_end_pass();
+        }
 
         //////////////////////////////////////////////////////////////////////
         // Light prefilter pass
         //////////////////////////////////////////////////////////////////////
-        prefilter_uniforms_t prefilter_uniforms = {};
-        g_app.m_PrefilterPass.m_Bindings.fs_images[SLOT_tex_cube] = g_app.m_EnvironmentPass.m_Image;
-
-        int pass_index = 0;
-        int mipmap_size = g_app.m_PrefilterPass.m_Size;
-        for (int mip = 0; mip < g_app.m_PrefilterPass.m_MipmapCount; ++mip)
+        if (g_app.m_Params.m_GenerateMask & GENERATE_PREFILTERED_ENVIRONMENT)
         {
-            prefilter_uniforms.roughness = (float) mip / (float) (g_app.m_PrefilterPass.m_MipmapCount-1);
+            LOG_INFO("Generating prefiltered environment\n");
 
-            for (int i = 0; i < 6; ++i)
+            prefilter_uniforms_t prefilter_uniforms = {};
+            g_app.m_PrefilterPass.m_Bindings.fs_images[SLOT_tex_cube] = g_app.m_EnvironmentPass.m_Image;
+
+            int pass_index = 0;
+            int mipmap_size = g_app.m_PrefilterPass.m_Size;
+            for (int mip = 0; mip < g_app.m_PrefilterPass.m_MipmapCount; ++mip)
             {
-                memcpy(&cubemap_uniforms.view, g_app.m_CubeViewMatrices[i], sizeof(mat4x4));
+                prefilter_uniforms.roughness = (float) mip / (float) (g_app.m_PrefilterPass.m_MipmapCount-1);
 
-                sg_range cubemap_uniform_data   = SG_RANGE(cubemap_uniforms);
-                sg_range prefilter_uniform_data = SG_RANGE(prefilter_uniforms);
+                for (int i = 0; i < 6; ++i)
+                {
+                    memcpy(&cubemap_uniforms.view, g_app.m_CubeViewMatrices[i], sizeof(mat4x4));
 
-                sg_begin_pass(g_app.m_PrefilterPass.m_Pass[pass_index], &g_app.m_PrefilterPass.m_PassAction);
+                    sg_range cubemap_uniform_data   = SG_RANGE(cubemap_uniforms);
+                    sg_range prefilter_uniform_data = SG_RANGE(prefilter_uniforms);
 
-                sg_apply_viewport(0, 0, mipmap_size, mipmap_size, false);
+                    sg_begin_pass(g_app.m_PrefilterPass.m_Pass[pass_index], &g_app.m_PrefilterPass.m_PassAction);
 
-                sg_apply_pipeline(g_app.m_PrefilterPass.m_Pipeline);
-                sg_apply_bindings(&g_app.m_PrefilterPass.m_Bindings);
-                sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms,   &cubemap_uniform_data);
-                sg_apply_uniforms(SG_SHADERSTAGE_FS, SLOT_prefilter_uniforms, &prefilter_uniform_data);
+                    sg_apply_viewport(0, 0, mipmap_size, mipmap_size, false);
 
-                sg_draw(0, g_app.m_Cube.num_elements, 1);
-                sg_end_pass();
+                    sg_apply_pipeline(g_app.m_PrefilterPass.m_Pipeline);
+                    sg_apply_bindings(&g_app.m_PrefilterPass.m_Bindings);
+                    sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms,   &cubemap_uniform_data);
+                    sg_apply_uniforms(SG_SHADERSTAGE_FS, SLOT_prefilter_uniforms, &prefilter_uniform_data);
 
-                pass_index++;
+                    sg_draw(0, g_app.m_Cube.num_elements, 1);
+                    sg_end_pass();
+
+                    pass_index++;
+                }
+
+                mipmap_size /= 2;
             }
-
-            mipmap_size /= 2;
         }
 
         //////////////////////////////////////////////////////////////////////
@@ -1058,8 +1082,38 @@ app_params get_default_app_params()
     params.m_Verbose       = false;
     params.m_PathInput     = "";
     params.m_PathDirectory = "";
+    params.m_GenerateMask  = GENERATE_ALL;
 
     return params;
+}
+
+void generation_mask_to_str(int mask_val, char* mask)
+{
+    if (mask_val == GENERATE_ALL)
+    {
+        sprintf(mask, "all");
+        return;
+    }
+
+    char* _mask = mask;
+    if (mask_val & GENERATE_BRDF_LUT)
+    {
+        char* mask_str = "brdf ";
+        memcpy(_mask, mask_str, strlen(mask_str));
+        _mask += strlen(mask_str);
+    }
+    if (mask_val & GENERATE_DIFFUSE_IRRADIANCE)
+    {
+        char* mask_str = "irradiance ";
+        memcpy(_mask, mask_str, strlen(mask_str));
+        _mask += strlen(mask_str);
+    }
+    if (mask_val & GENERATE_PREFILTERED_ENVIRONMENT)
+    {
+        char* mask_str = "prefilter ";
+        memcpy(_mask, mask_str, strlen(mask_str));
+        _mask += strlen(mask_str);
+    }
 }
 
 void print_app_params(app_params params)
@@ -1068,23 +1122,33 @@ void print_app_params(app_params params)
     {
         return;
     }
+
+    char mask_str[128];
+    generation_mask_to_str(params.m_GenerateMask, mask_str);
+
 #define TRUE_FALSE_LABEL(cond) (cond?"TRUE":"FALSE")
     printf("----------- Configuration -----------\n");
     printf("Input path        : %s\n", params.m_PathInput);
     printf("Output directory  : %s\n", params.m_PathDirectory);
+    printf("Generate          : %s\n", mask_str);
     printf("Preview           : %s\n", TRUE_FALSE_LABEL(params.m_Preview));
     printf("-------------------------------------\n");
 #undef TRUE_FALSE_LABEL
 }
 
-void ShowUsage()
+void show_usage()
 {
     printf("--------------- Help ---------------\n");
     printf("Usage: pbr-utils <input-file> <output-file> [options]\n");
     printf("Options:\n");
-    printf("  --verbose : Enable verbose logging\n");
-    printf("  --preview : Enable preview rendering\n");
-    printf("  --help    : Show this help screen\n");
+    printf("  --generate <value> : What to generate, where value is:\n");
+    printf("      all            : Generate BRDF lut, diffuse irradiance, prefiltered environment (default)\n");
+    printf("      brdf           : Generate only BRDF lut map\n");
+    printf("      irradiance     : Generate only diffuse irradiance map\n");
+    printf("      prefilter      : Generate only prefiltered environment map\n");
+    printf("  --verbose          : Enable verbose logging\n");
+    printf("  --preview          : Enable preview rendering\n");
+    printf("  --help             : Show this help screen\n");
     printf("-------------------------------------\n");
 }
 
@@ -1133,12 +1197,14 @@ int parse_arguments(int argc, char* argv[], app_params* params)
     params->m_PathInput     = argc > 1 ? argv[1] : 0;
     params->m_PathDirectory = argc > 2 ? argv[2] : 0;
 
-    for (int i = 0; i < argc; ++i)
+    int generation_mask = GENERATE_NONE;
+
+    for (int i = 2; i < argc; ++i)
     {
         if (is_app_arg(argv[i]))
         {
-            const char* actual_arg    = argv[i]+2;
-            #define CMP_ARG(name)      (str_case_cmp(actual_arg, name) == 0)
+            #define CMP_ARG(name)      (str_case_cmp(argv[i] + 2, name) == 0)
+            #define CMP_VAL(name)      (str_case_cmp(argv[i],     name) == 0)
             #define CMP_ARG_1_OP(name) (CMP_ARG(name) && (i+1) < argc)
 
             if (CMP_ARG("verbose"))
@@ -1147,23 +1213,38 @@ int parse_arguments(int argc, char* argv[], app_params* params)
             }
             else if (CMP_ARG("help"))
             {
-                ShowUsage();
+                show_usage();
                 return PARAMS_RESULT_SHOW_HELP;
             }
             else if (CMP_ARG("preview"))
             {
                 params->m_Preview = true;
             }
-            /*
-            else if (CMP_ARG_1_OP("output-directory"))
+            else if (CMP_ARG_1_OP("generate"))
             {
-                params->m_PathDirectory = argv[++i];
+                i++;
+                if (CMP_VAL("brdf"))
+                {
+                    generation_mask |= GENERATE_BRDF_LUT;
+                }
+                else if (CMP_VAL("prefilter"))
+                {
+                    generation_mask |= GENERATE_PREFILTERED_ENVIRONMENT;
+                }
+                else if (CMP_VAL("irradiance"))
+                {
+                    generation_mask |= GENERATE_DIFFUSE_IRRADIANCE;
+                }
             }
-            */
 
             #undef CMP_ARG_1_OP
             #undef CMP_ARG
         }
+    }
+
+    if (generation_mask != GENERATE_NONE)
+    {
+        params->m_GenerateMask = generation_mask;
     }
 
     return validate_app_arguments(params);
@@ -1188,7 +1269,7 @@ void handle_parse_result(int res, app_params* params)
         printf("Incorrect directory passed (arg=2) '%s'\n", GET_STRING_OR_NULL(params->m_PathDirectory));
     }
 
-    ShowUsage();
+    show_usage();
 
     exit(-1);
 #undef GET_STRING_OR_NULL
