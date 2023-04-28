@@ -1,0 +1,20 @@
+name: "defold-pbr-utils"
+
+on:
+  push:
+    branches:
+      - '*'
+
+jobs:
+    build-macos:
+      runs-on: macos-latest
+      steps:
+        - uses: actions/checkout@v2
+        - name: Build PBR Utils for macos
+          run: ./build.sh
+        - name: Archive results
+          uses: actions/upload-artifact@v3
+          with:
+            name: macOS defold-pbr-utils
+            path: |
+              ./build/pbr-utils
