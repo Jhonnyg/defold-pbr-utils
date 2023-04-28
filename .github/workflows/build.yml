@@ -10,7 +10,7 @@ jobs:
       runs-on: windows-latest
       steps:
         - uses: actions/checkout@v2
-        - name: Build PBR Utils for macos
+        - name: Build PBR Utils for windows
           run: ./build.sh
           shell: bash
         - name: Archive results

@@ -28,6 +28,13 @@
     #error "Unsupported platform"
 #endif
 
+#if defined(_WIN32)
+    typedef void (__stdcall * PFN_GLGETTEXIMAGEPROC)    (GLenum, GLint, GLenum, GLenum, void*);
+    typedef void (__stdcall * PFN_GLGENERATEMIPMAPPROC) (GLenum);
+    PFN_GLGETTEXIMAGEPROC    glGetTexImage    = NULL;
+    PFN_GLGENERATEMIPMAPPROC glGenerateMipmap = NULL;
+#endif
+
 typedef struct
 {
     sg_buffer vbuf;
@@ -197,11 +204,14 @@ static void make_cube()
         -1.0f,  1.0f, -1.0f, // top-left
         -1.0f,  1.0f,  1.0f, // bottom-left
     };
+
+    sg_buffer_desc cube_buffer_desc = {
+        .data  = SG_RANGE(vertices),
+        .label = "cube-vertices"
+    };
+
     mesh_t cube = {
-        .vbuf = sg_make_buffer(&(sg_buffer_desc){
-            .data = SG_RANGE(vertices),
-            .label = "cube-vertices"
-        }),
+        .vbuf = sg_make_buffer(&cube_buffer_desc),
         .num_elements = 6 * 6,
     };
 
@@ -254,7 +264,7 @@ static void make_brdf_lut_pass()
 {
     g_app.m_BRDFLutPass.m_Size  = 512;
 
-    g_app.m_BRDFLutPass.m_Image = sg_make_image(&(sg_image_desc) {
+    sg_image_desc brdf_lut_pass_image_desc = {
         .type          = SG_IMAGETYPE_2D,
         .render_target = true,
         .width         = g_app.m_BRDFLutPass.m_Size,
@@ -265,31 +275,38 @@ static void make_brdf_lut_pass()
         .wrap_u        = SG_WRAP_CLAMP_TO_EDGE,
         .wrap_v        = SG_WRAP_CLAMP_TO_EDGE,
         .label         = "color-image"
-    });
+    };
 
-    sg_image depth_img = sg_make_image(&(sg_image_desc) {
+    g_app.m_BRDFLutPass.m_Image = sg_make_image(&brdf_lut_pass_image_desc);
+
+    sg_image_desc depth_img_desc = {
         .type          = SG_IMAGETYPE_2D,
         .render_target = true,
         .width         = g_app.m_BRDFLutPass.m_Size,
         .height        = g_app.m_BRDFLutPass.m_Size,
         .pixel_format  = SG_PIXELFORMAT_DEPTH,
         .label         = "cubemap-depth-rt"
-    });
+    };
 
-    g_app.m_BRDFLutPass.m_Pass = sg_make_pass(&(sg_pass_desc){
-        .color_attachments[0] = {
-            .image = g_app.m_BRDFLutPass.m_Image,
-            .slice = 0
-        },
-        .depth_stencil_attachment.image = depth_img,
-        .label                          = "offscreen-pass"
-    });
+    sg_image depth_img = sg_make_image(&depth_img_desc);
 
-    g_app.m_BRDFLutPass.m_PassAction = (sg_pass_action) {
-        .colors[0] = {
-            .action = SG_ACTION_CLEAR,
-            .value  = {0.0f, 0.0f, 0.0f, 1.0f}
-        }
+    sg_pass_desc brdf_lut_pass_desc = {
+        .label = "offscreen-pass"
+    };
+
+    brdf_lut_pass_desc.depth_stencil_attachment.image = depth_img;
+
+    brdf_lut_pass_desc.color_attachments[0] = {
+        .image = g_app.m_BRDFLutPass.m_Image,
+        .slice = 0
+    };
+
+    g_app.m_BRDFLutPass.m_Pass = sg_make_pass(&brdf_lut_pass_desc);
+
+    g_app.m_BRDFLutPass.m_PassAction           = {};
+    g_app.m_BRDFLutPass.m_PassAction.colors[0] = {
+        .action = SG_ACTION_CLEAR,
+        .value  = {0.0f, 0.0f, 0.0f, 1.0f}
     };
 
     float vertices[] = {
@@ -302,28 +319,30 @@ static void make_brdf_lut_pass()
          1.0f, -1.0f, 1.0f, 0.0f,
     };
 
-    g_app.m_BRDFLutPass.m_Bindings.vertex_buffers[0] = sg_make_buffer(&(sg_buffer_desc){
+    sg_buffer_desc brdf_lut_pass_buffer_desc = {
         .data  = SG_RANGE(vertices),
         .label = "triangle-vertices",
-    });
+    };
 
-    g_app.m_BRDFLutPass.m_Pipeline = sg_make_pipeline(&(sg_pipeline_desc){
+    g_app.m_BRDFLutPass.m_Bindings.vertex_buffers[0] = sg_make_buffer(&brdf_lut_pass_buffer_desc);
+
+    sg_pipeline_desc brdf_lut_pass_pipeline_desc = {
         .shader = sg_make_shader(pbr_brdf_lut_shader_desc(sg_query_backend())),
-        .layout = {
-            .attrs = {
-                [ATTR_brdf_lut_vs_position].format = SG_VERTEXFORMAT_FLOAT2,
-                [ATTR_brdf_lut_vs_texcoord].format = SG_VERTEXFORMAT_FLOAT2,
-            },
-        },
+        .layout = {},
         .depth = {
             .pixel_format  = SG_PIXELFORMAT_DEPTH,
             .compare       = SG_COMPAREFUNC_LESS_EQUAL,
             .write_enabled = true,
         },
-        .colors[0].pixel_format = SG_PIXELFORMAT_RGBA32F,
-        .cull_mode              = SG_CULLMODE_NONE,
-        .label                  = "pipeline_fullscreen"
-    });
+        .cull_mode = SG_CULLMODE_NONE,
+        .label     = "pipeline_fullscreen"
+    };
+
+    brdf_lut_pass_pipeline_desc.colors[0].pixel_format                         = SG_PIXELFORMAT_RGBA32F;
+    brdf_lut_pass_pipeline_desc.layout.attrs[ATTR_brdf_lut_vs_position].format = SG_VERTEXFORMAT_FLOAT2;
+    brdf_lut_pass_pipeline_desc.layout.attrs[ATTR_brdf_lut_vs_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
+
+    g_app.m_BRDFLutPass.m_Pipeline = sg_make_pipeline(&brdf_lut_pass_pipeline_desc);
 }
 
 static void make_prefilter_pass()
@@ -331,11 +350,13 @@ static void make_prefilter_pass()
     g_app.m_PrefilterPass.m_Size        = 256;
     g_app.m_PrefilterPass.m_MipmapCount = 1 + floor(log2(g_app.m_PrefilterPass.m_Size));
 
-    g_app.m_PrefilterPass.m_PassAction = (sg_pass_action) {
-        .colors[0] = { .action = SG_ACTION_CLEAR, .value = { 0.25f, 0.25f, 0.25f, 1.0f } }
+    g_app.m_PrefilterPass.m_PassAction           = {};
+    g_app.m_PrefilterPass.m_PassAction.colors[0] = {
+        .action = SG_ACTION_CLEAR,
+        .value = { 0.25f, 0.25f, 0.25f, 1.0f }
     };
 
-    g_app.m_PrefilterPass.m_Image = sg_make_image(&(sg_image_desc) {
+    sg_image_desc prefilter_pass_img_desc = {
         .type          = SG_IMAGETYPE_CUBE,
         .render_target = true,
         .width         = g_app.m_PrefilterPass.m_Size,
@@ -347,54 +368,62 @@ static void make_prefilter_pass()
         .wrap_u        = SG_WRAP_REPEAT,
         .wrap_v        = SG_WRAP_REPEAT,
         .label         = "color-image"
-    });
+    };
+
+    g_app.m_PrefilterPass.m_Image = sg_make_image(&prefilter_pass_img_desc);
 
     g_app.m_PrefilterPass.m_Pass = (sg_pass*) malloc(sizeof(sg_pass) * g_app.m_PrefilterPass.m_MipmapCount * 6);
 
     int pass_index = 0;
     for (int mipmap = 0; mipmap < g_app.m_PrefilterPass.m_MipmapCount; ++mipmap)
     {
-        sg_image depth_img = sg_make_image(&(sg_image_desc) {
+
+        sg_image_desc depth_img_desc = {
             .type          = SG_IMAGETYPE_2D,
             .render_target = true,
             .width         = g_app.m_PrefilterPass.m_Size >> mipmap,
             .height        = g_app.m_PrefilterPass.m_Size >> mipmap,
             .pixel_format  = SG_PIXELFORMAT_DEPTH,
             .label         = "cubemap-depth-rt"
-        });
+        };
+
+        sg_image depth_img = sg_make_image(&depth_img_desc);
 
         for (int i = 0; i < 6; ++i)
         {
-            g_app.m_PrefilterPass.m_Pass[pass_index] = sg_make_pass(&(sg_pass_desc){
-                .color_attachments[0] = {
-                    .image     = g_app.m_PrefilterPass.m_Image,
-                    .slice     = i,
-                    .mip_level = mipmap,
-                },
-                .depth_stencil_attachment.image = depth_img,
-                .label                          = "offscreen-pass"
-            });
+            sg_pass_desc prefilter_pass_desc = {
+                .label = "offscreen-pass"
+            };
+            prefilter_pass_desc.depth_stencil_attachment.image = depth_img;
+            prefilter_pass_desc.color_attachments[0] = {
+                .image     = g_app.m_PrefilterPass.m_Image,
+                .mip_level = mipmap,
+                .slice     = i,
+            };
+
+            g_app.m_PrefilterPass.m_Pass[pass_index] = sg_make_pass(&prefilter_pass_desc);
 
             pass_index++;
         }
     }
 
-    g_app.m_PrefilterPass.m_Pipeline = sg_make_pipeline(&(sg_pipeline_desc){
+    sg_pipeline_desc prefilter_pass_pipeline_desc = {
         .shader = sg_make_shader(pbr_prefilter_shader_desc(sg_query_backend())),
         .layout = {
-            .attrs = {
-                [ATTR_cubemap_vs_position].format = SG_VERTEXFORMAT_FLOAT3,
-            },
         },
         .depth = {
             .pixel_format  = SG_PIXELFORMAT_DEPTH,
             .compare       = SG_COMPAREFUNC_LESS_EQUAL,
             .write_enabled = true,
         },
-        .colors[0].pixel_format = SG_PIXELFORMAT_RGBA32F,
         .cull_mode              = SG_CULLMODE_NONE,
         .label                  = "pipeline_fullscreen"
-    });
+    };
+
+    prefilter_pass_pipeline_desc.colors[0].pixel_format                         = SG_PIXELFORMAT_RGBA32F;
+    prefilter_pass_pipeline_desc.layout.attrs[ATTR_cubemap_vs_position].format = SG_VERTEXFORMAT_FLOAT3;
+
+    g_app.m_PrefilterPass.m_Pipeline = sg_make_pipeline(&prefilter_pass_pipeline_desc);
 
     g_app.m_PrefilterPass.m_Bindings.vertex_buffers[0] = g_app.m_Cube.vbuf;
 }
@@ -402,11 +431,13 @@ static void make_prefilter_pass()
 static void make_diffuse_irradiance_pass()
 {
     g_app.m_DiffuseIrradiancePass.m_Size = 64;
-    g_app.m_DiffuseIrradiancePass.m_PassAction = (sg_pass_action) {
-        .colors[0] = { .action = SG_ACTION_CLEAR, .value = { 0.25f, 0.25f, 0.25f, 1.0f } }
+    g_app.m_DiffuseIrradiancePass.m_PassAction = {};
+    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0] = {
+        .action = SG_ACTION_CLEAR,
+        .value  = { 0.25f, 0.25f, 0.25f, 1.0f }
     };
 
-    g_app.m_DiffuseIrradiancePass.m_Image = sg_make_image(&(sg_image_desc) {
+    sg_image_desc diffuse_irridance_img_desc {
         .type          = SG_IMAGETYPE_CUBE,
         .render_target = true,
         .width         = g_app.m_DiffuseIrradiancePass.m_Size,
@@ -417,72 +448,83 @@ static void make_diffuse_irradiance_pass()
         .wrap_u        = SG_WRAP_REPEAT,
         .wrap_v        = SG_WRAP_REPEAT,
         .label         = "color-image"
-    });
+    };
 
-    sg_image depth_img = sg_make_image(&(sg_image_desc) {
+    g_app.m_DiffuseIrradiancePass.m_Image = sg_make_image(&diffuse_irridance_img_desc);
+
+    sg_image_desc diffuse_irridance_depth_img_desc = {
         .type          = SG_IMAGETYPE_2D,
         .render_target = true,
         .width         = g_app.m_DiffuseIrradiancePass.m_Size,
         .height        = g_app.m_DiffuseIrradiancePass.m_Size,
         .pixel_format  = SG_PIXELFORMAT_DEPTH,
         .label         = "cubemap-depth-rt"
-    });
+    };
+
+    sg_image depth_img = sg_make_image(&diffuse_irridance_depth_img_desc);
 
     for (int i = 0; i < 6; ++i)
     {
-        g_app.m_DiffuseIrradiancePass.m_Pass[i] = sg_make_pass(&(sg_pass_desc){
-            .color_attachments[0] = {
-                .image = g_app.m_DiffuseIrradiancePass.m_Image,
-                .slice = i
-            },
-            .depth_stencil_attachment.image = depth_img,
-            .label                          = "offscreen-pass"
-        });
+
+        sg_pass_desc diffuse_irradiance_pass_desc = {
+            .label = "offscreen-pass"
+        };
+
+        diffuse_irradiance_pass_desc.depth_stencil_attachment.image = depth_img;
+        diffuse_irradiance_pass_desc.color_attachments[0] = {
+            .image = g_app.m_DiffuseIrradiancePass.m_Image,
+            .slice = i
+        },
+
+        g_app.m_DiffuseIrradiancePass.m_Pass[i] = sg_make_pass(&diffuse_irradiance_pass_desc);
     }
 
-    g_app.m_DiffuseIrradiancePass.m_Pipeline = sg_make_pipeline(&(sg_pipeline_desc){
+    sg_pipeline_desc diffuse_irradiance_pipeline_desc = {
         .shader = sg_make_shader(pbr_diffuse_irradiance_shader_desc(sg_query_backend())),
-        .layout = {
-            .attrs = {
-                [ATTR_cubemap_vs_position].format = SG_VERTEXFORMAT_FLOAT3,
-            },
-        },
+        .layout = {},
         .depth = {
             .pixel_format  = SG_PIXELFORMAT_DEPTH,
             .compare       = SG_COMPAREFUNC_LESS_EQUAL,
             .write_enabled = true,
         },
-        .colors[0].pixel_format = SG_PIXELFORMAT_RGBA32F,
         .cull_mode              = SG_CULLMODE_NONE,
         .label                  = "pipeline_fullscreen"
-    });
+    };
+
+    diffuse_irradiance_pipeline_desc.colors[0].pixel_format                        = SG_PIXELFORMAT_RGBA32F;
+    diffuse_irradiance_pipeline_desc.layout.attrs[ATTR_cubemap_vs_position].format = SG_VERTEXFORMAT_FLOAT3;
+
+    g_app.m_DiffuseIrradiancePass.m_Pipeline = sg_make_pipeline(&diffuse_irradiance_pipeline_desc);
 
     g_app.m_DiffuseIrradiancePass.m_Bindings.vertex_buffers[0] = g_app.m_Cube.vbuf;
 }
 
 static void make_environment_pass()
 {
-    g_app.m_EnvironmentPass.m_Size = 1024;
-
-    g_app.m_EnvironmentPass.m_PassAction = (sg_pass_action) {
-        .colors[0] = { .action = SG_ACTION_CLEAR, .value = { 0.25f, 0.25f, 0.25f, 1.0f } }
+    g_app.m_EnvironmentPass.m_Size                 = 1024;
+    g_app.m_EnvironmentPass.m_PassAction           = {};
+    g_app.m_EnvironmentPass.m_PassAction.colors[0] = {
+        .action = SG_ACTION_CLEAR,
+        .value  = { 0.25f, 0.25f, 0.25f, 1.0f }
     };
 
-    g_app.m_EnvironmentPass.m_Image = sg_make_image(&(sg_image_desc) {
+    sg_image_desc environment_pass_image_desc = {
         .type          = SG_IMAGETYPE_CUBE,
         .render_target = true,
         .width         = g_app.m_EnvironmentPass.m_Size,
         .height        = g_app.m_EnvironmentPass.m_Size,
         .pixel_format  = SG_PIXELFORMAT_RGBA32F,
+        .sample_count  = 4,
         .min_filter    = SG_FILTER_LINEAR_MIPMAP_LINEAR,
         .mag_filter    = SG_FILTER_LINEAR,
         .wrap_u        = SG_WRAP_REPEAT,
         .wrap_v        = SG_WRAP_REPEAT,
-        .sample_count  = 4,
         .label         = "color-image"
-    });
+    };
 
-    sg_image depth_img = sg_make_image(&(sg_image_desc) {
+    g_app.m_EnvironmentPass.m_Image = sg_make_image(&environment_pass_image_desc);
+
+    sg_image_desc depth_img_desc {
         .type          = SG_IMAGETYPE_2D,
         .render_target = true,
         .width         = g_app.m_EnvironmentPass.m_Size,
@@ -490,48 +532,50 @@ static void make_environment_pass()
         .pixel_format  = SG_PIXELFORMAT_DEPTH,
         .sample_count  = 4,
         .label         = "cubemap-depth-rt"
-    });
+    };
+
+    sg_image depth_img = sg_make_image(&depth_img_desc);
 
     for (int i = 0; i < 6; ++i)
     {
-        g_app.m_EnvironmentPass.m_Pass[i] = sg_make_pass(&(sg_pass_desc) {
-            .color_attachments[0] = {
+        sg_pass_desc environment_pass_desc = {
+            .label = "offscreen-pass"
+        };
+
+        environment_pass_desc.depth_stencil_attachment.image = depth_img;
+        environment_pass_desc.color_attachments[0] = {
                 .image = g_app.m_EnvironmentPass.m_Image,
                 .slice = i
-            },
-            .depth_stencil_attachment.image = depth_img,
-            .label                          = "offscreen-pass"
-        });
+        };
+
+        g_app.m_EnvironmentPass.m_Pass[i] = sg_make_pass(&environment_pass_desc);
     }
 
-    g_app.m_EnvironmentPass.m_Pipeline = sg_make_pipeline(&(sg_pipeline_desc) {
+    sg_pipeline_desc environment_pass_pipeline_desc = {
         .shader = sg_make_shader(pbr_shader_shader_desc(sg_query_backend())),
-        .layout = {
-            .attrs = {
-                [ATTR_cubemap_vs_position].format = SG_VERTEXFORMAT_FLOAT3,
-            },
-        },
         .depth = {
             .pixel_format  = SG_PIXELFORMAT_DEPTH,
             .compare       = SG_COMPAREFUNC_LESS_EQUAL,
             .write_enabled = true,
         },
-        .colors[0].pixel_format = SG_PIXELFORMAT_RGBA32F,
-        .sample_count           = 4,
         .cull_mode              = SG_CULLMODE_NONE,
+        .sample_count           = 4,
         .label                  = "pipeline_fullscreen"
-    });
+    };
 
+    environment_pass_pipeline_desc.colors[0].pixel_format                        = SG_PIXELFORMAT_RGBA32F;
+    environment_pass_pipeline_desc.layout.attrs[ATTR_cubemap_vs_position].format = SG_VERTEXFORMAT_FLOAT3;
+
+    g_app.m_EnvironmentPass.m_Pipeline                   = sg_make_pipeline(&environment_pass_pipeline_desc);
     g_app.m_EnvironmentPass.m_Bindings.vertex_buffers[0] = g_app.m_Cube.vbuf;
 }
 
 static void make_display_pass(void)
 {
-    g_app.m_DisplayPass.m_PassAction = (sg_pass_action) {
-        .colors[0] = {
-            .action=SG_ACTION_CLEAR,
-            .value={0.0f, 0.0f, 0.0f, 1.0f}
-        }
+    g_app.m_DisplayPass.m_PassAction           = {};
+    g_app.m_DisplayPass.m_PassAction.colors[0] = {
+        .action=SG_ACTION_CLEAR,
+        .value={0.0f, 0.0f, 0.0f, 1.0f}
     };
 
     float vertices[] = {
@@ -544,22 +588,23 @@ static void make_display_pass(void)
          1.0f, -1.0f, 1.0f, 0.0f,
     };
 
-    g_app.m_DisplayPass.m_Bindings.vertex_buffers[0] = sg_make_buffer(&(sg_buffer_desc){
-        .data = SG_RANGE(vertices),
+    sg_buffer_desc triangle_buffer_desc = {
+        .data  = SG_RANGE(vertices),
         .label = "triangle-vertices",
-    });
+    };
 
-    g_app.m_DisplayPass.m_Pipeline = sg_make_pipeline(&(sg_pipeline_desc){
-        .shader = sg_make_shader(pbr_display_shader_desc(sg_query_backend())),
-        .layout = {
-            .attrs = {
-                [ATTR_display_vs_position].format = SG_VERTEXFORMAT_FLOAT2,
-                [ATTR_display_vs_texcoord].format = SG_VERTEXFORMAT_FLOAT2,
-            },
-        },
+    g_app.m_DisplayPass.m_Bindings.vertex_buffers[0] = sg_make_buffer(&triangle_buffer_desc);
+
+    sg_pipeline_desc display_pass_pipeline_desc = {
+        .shader    = sg_make_shader(pbr_display_shader_desc(sg_query_backend())),
         .cull_mode = SG_CULLMODE_NONE,
-        .label = "pbr_pipeline"
-    });
+        .label     = "pbr_pipeline"
+    };
+
+    display_pass_pipeline_desc.layout.attrs[ATTR_display_vs_position].format = SG_VERTEXFORMAT_FLOAT2;
+    display_pass_pipeline_desc.layout.attrs[ATTR_display_vs_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
+
+    g_app.m_DisplayPass.m_Pipeline = sg_make_pipeline(&display_pass_pipeline_desc);
 }
 
 static void make_uniforms()
@@ -583,11 +628,12 @@ static void make_uniforms()
 
 static void flip_image_y(void* pixels, int rows, int pitch)
 {
-    uint8_t* tmp_row = malloc(pitch * rows);
+    uint8_t* tmp_row = (uint8_t*) malloc(pitch * rows);
     memcpy(tmp_row, pixels, pitch * rows);
     for (int i = 0; i < rows; ++i)
     {
-        memcpy(pixels + pitch * i, tmp_row + (rows-i-1) * pitch, pitch);
+        uint8_t* write_ptr = (uint8_t*) pixels + pitch * i;
+        memcpy(write_ptr, tmp_row + (rows-i-1) * pitch, pitch);
     }
     free(tmp_row);
 }
@@ -597,7 +643,7 @@ void write_prefilter(int side, int mipmap)
 #if defined(SOKOL_GLCORE33)
     uint32_t size        = 256 >> mipmap;
     uint32_t pixel_count = size * size * 4;
-    uint8_t* pixels      = malloc(pixel_count * sizeof(uint8_t));
+    uint8_t* pixels      = (uint8_t*) malloc(pixel_count * sizeof(uint8_t));
 
     sg_query_image_pixels(g_app.m_PrefilterPass.m_Image, pixels, GL_TEXTURE_CUBE_MAP_POSITIVE_X + side, GL_UNSIGNED_BYTE, mipmap);
 
@@ -618,7 +664,7 @@ void write_side(int side)
 {
 #if defined(SOKOL_GLCORE33)
     uint32_t pixel_count = 64 * 64 * 4;
-    uint8_t* pixels = malloc(pixel_count * sizeof(uint8_t));
+    uint8_t* pixels = (uint8_t*) malloc(pixel_count * sizeof(uint8_t));
 
     sg_query_image_pixels(g_app.m_DiffuseIrradiancePass.m_Image, pixels, GL_TEXTURE_CUBE_MAP_POSITIVE_X + side, GL_UNSIGNED_BYTE, 0);
 
@@ -638,7 +684,7 @@ void write_brdf_lut()
 {
 #if defined(SOKOL_GLCORE33)
     uint32_t pixel_count = 512 * 512 * 4;
-    uint8_t* pixels = malloc(pixel_count * sizeof(uint8_t));
+    uint8_t* pixels = (uint8_t*) malloc(pixel_count * sizeof(uint8_t));
 
     sg_query_image_pixels(g_app.m_BRDFLutPass.m_Image, pixels, GL_TEXTURE_2D, GL_UNSIGNED_BYTE, 0);
 
@@ -700,11 +746,11 @@ void write_output_data()
 
         // buffer for each individual side
         uint32_t data_size_side = g_app.m_DiffuseIrradiancePass.m_Size * g_app.m_DiffuseIrradiancePass.m_Size * 4 * sizeof(float);
-        float* pixels_side      = malloc(data_size_side);
+        float* pixels_side      = (float*) malloc(data_size_side);
 
         // pixel buffer for entire cubemap
         uint32_t data_size = data_size_side * 6;
-        float* pixels        = malloc(data_size);
+        float* pixels        = (float*) malloc(data_size);
 
         for (int side = 0; side < 6; ++side)
         {
@@ -728,10 +774,10 @@ void write_output_data()
 
         // buffer for each individual side
         uint32_t data_size_side = g_app.m_PrefilterPass.m_Size * g_app.m_PrefilterPass.m_Size * 4 * sizeof(float);
-        float* pixels_side      = malloc(data_size_side);
+        float* pixels_side      = (float*) malloc(data_size_side);
 
         uint32_t data_size = data_size_side * 6;
-        float* pixels      = malloc(data_size);
+        float* pixels      = (float*) malloc(data_size);
 
         for (int mip = 0; mip < g_app.m_PrefilterPass.m_MipmapCount; ++mip)
         {
@@ -763,7 +809,7 @@ void write_output_data()
         printf("Writing BRDF Lut to %s\n", output_path);
 
         uint32_t pixel_count    = g_app.m_BRDFLutPass.m_Size * g_app.m_BRDFLutPass.m_Size * 4;
-        float* pixels           = malloc(pixel_count * sizeof(float));
+        float* pixels           = (float*) malloc(pixel_count * sizeof(float));
         sg_query_image_pixels(g_app.m_BRDFLutPass.m_Image, pixels, GL_TEXTURE_2D, GL_FLOAT, 0);
         write_float_buffer(output_path, pixels, pixel_count * sizeof(float));
         free(pixels);
@@ -790,10 +836,12 @@ void frame(void)
         {
             memcpy(&cubemap_uniforms.view, g_app.m_CubeViewMatrices[i], sizeof(mat4x4));
 
+            sg_range cubemap_uniform_data = SG_RANGE(cubemap_uniforms);
+
             sg_begin_pass(g_app.m_EnvironmentPass.m_Pass[i], &g_app.m_EnvironmentPass.m_PassAction);
             sg_apply_pipeline(g_app.m_EnvironmentPass.m_Pipeline);
             sg_apply_bindings(&g_app.m_EnvironmentPass.m_Bindings);
-            sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms, &SG_RANGE(cubemap_uniforms));
+            sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms, &cubemap_uniform_data);
 
             sg_draw(0, g_app.m_Cube.num_elements, 1);
             sg_end_pass();
@@ -809,10 +857,12 @@ void frame(void)
         {
             memcpy(&cubemap_uniforms.view, g_app.m_CubeViewMatrices[i], sizeof(mat4x4));
 
+            sg_range cubemap_uniform_data = SG_RANGE(cubemap_uniforms);
+
             sg_begin_pass(g_app.m_DiffuseIrradiancePass.m_Pass[i], &g_app.m_DiffuseIrradiancePass.m_PassAction);
             sg_apply_pipeline(g_app.m_DiffuseIrradiancePass.m_Pipeline);
             sg_apply_bindings(&g_app.m_DiffuseIrradiancePass.m_Bindings);
-            sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms, &SG_RANGE(cubemap_uniforms));
+            sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms, &cubemap_uniform_data);
 
             sg_draw(0, g_app.m_Cube.num_elements, 1);
             sg_end_pass();
@@ -844,14 +894,17 @@ void frame(void)
             {
                 memcpy(&cubemap_uniforms.view, g_app.m_CubeViewMatrices[i], sizeof(mat4x4));
 
+                sg_range cubemap_uniform_data   = SG_RANGE(cubemap_uniforms);
+                sg_range prefilter_uniform_data = SG_RANGE(prefilter_uniforms);
+
                 sg_begin_pass(g_app.m_PrefilterPass.m_Pass[pass_index], &g_app.m_PrefilterPass.m_PassAction);
 
                 sg_apply_viewport(0, 0, mipmap_size, mipmap_size, false);
 
                 sg_apply_pipeline(g_app.m_PrefilterPass.m_Pipeline);
                 sg_apply_bindings(&g_app.m_PrefilterPass.m_Bindings);
-                sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms,   &SG_RANGE(cubemap_uniforms));
-                sg_apply_uniforms(SG_SHADERSTAGE_FS, SLOT_prefilter_uniforms, &SG_RANGE(prefilter_uniforms));
+                sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms,   &cubemap_uniform_data);
+                sg_apply_uniforms(SG_SHADERSTAGE_FS, SLOT_prefilter_uniforms, &prefilter_uniform_data);
 
                 sg_draw(0, g_app.m_Cube.num_elements, 1);
                 sg_end_pass();
@@ -909,10 +962,12 @@ void cleanup(void)
 
 void init(void)
 {
-    sg_setup(&(sg_desc) {
-        .context        = sapp_sgcontext(),
+    sg_desc app_desc = {
         .pass_pool_size = 1024,
-    });
+        .context        = sapp_sgcontext(),
+    };
+
+    sg_setup(&app_desc);
 
     make_display_pass();
     make_cube();
