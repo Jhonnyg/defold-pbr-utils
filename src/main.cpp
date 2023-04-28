@@ -2,12 +2,11 @@
 #include <math.h>
 #include <stdint.h>
 
+#include <dirent.h>
+#include <errno.h>
+
 #include "linmath.h"
 
-#define SJSON_IMPLEMENT
-#include "sjson.h"
-
-//#define SOKOL_METAL
 #define SOKOL_GLCORE33
 #define SOKOL_IMPL
 #include "sokol_app.h"
@@ -28,6 +27,10 @@
     #error "Unsupported platform"
 #endif
 
+// Logging
+#define LOG_VERBOSE(...) if (g_app.m_Params.m_Verbose) printf("[VERBOSE]: "); printf(__VA_ARGS__);
+#define LOG_INFO(...) printf("[INFO]: "); printf(__VA_ARGS__);
+
 #if defined(_WIN32)
     typedef PROC (WINAPI * PFN_WGLGETPROCADDRESSPROC)(LPCSTR);
     typedef void (WINAPI * PFN_GLGETTEXIMAGEPROC)    (GLenum, GLint, GLenum, GLenum, void*);
@@ -42,6 +45,12 @@
     static PFN_GLGENERATEMIPMAPPROC glGenerateMipmap = NULL;
 #endif
 
+// Error message numbers
+static int PARAMS_RESULT_OK                         =  1;
+static int PARAMS_RESULT_INCORRECT_INPUT            = -1;
+static int PARAMS_RESULT_INCORRECT_OUTPUT_DIRECTORY = -2;
+static int PARAMS_RESULT_SHOW_HELP                  = -3;
+
 typedef struct
 {
     sg_buffer vbuf;
@@ -49,9 +58,18 @@ typedef struct
     int num_elements;
 } mesh_t;
 
-typedef struct {
+typedef struct
+{
     float pos[3];
 } vertex_t;
+
+typedef struct
+{
+    const char* m_PathInput;
+    const char* m_PathDirectory;
+    bool        m_Verbose;
+    bool        m_Preview;
+} app_params;
 
 struct app
 {
@@ -108,12 +126,13 @@ struct app
 
     struct
     {
-        const char* m_InputPath;
         sg_image    m_Image;
         int         m_Width;
         int         m_Height;
         int         m_MipmapCount;
     } m_EnvironmentTexture;
+
+    app_params m_Params;
 
     uint8_t m_IsDone : 1;
 } g_app = {};
@@ -225,26 +244,42 @@ static void make_cube()
     g_app.m_Cube = cube;
 }
 
-static void make_environment_image()
+static bool make_environment_image()
 {
     /// Load image
     sg_pixel_format pixel_format;
     uint8_t* pixel_data;
     int x,y,ch;
     int pixel_size;
-    if (stbi_is_hdr(g_app.m_EnvironmentTexture.m_InputPath))
+
+    const char* input_path = g_app.m_Params.m_PathInput;
+
+    if (stbi_is_hdr(g_app.m_Params.m_PathInput))
     {
-        pixel_data   = (uint8_t*) stbi_loadf(g_app.m_EnvironmentTexture.m_InputPath, &x, &y, &ch, 4);
+        pixel_data   = (uint8_t*) stbi_loadf(g_app.m_Params.m_PathInput, &x, &y, &ch, 4);
         pixel_format = SG_PIXELFORMAT_RGBA32F;
         pixel_size   = x * y * 4 * sizeof(float);
-        printf("Input environment: HDR\n");
     }
     else
     {
-        pixel_data   = (uint8_t*) stbi_load(g_app.m_EnvironmentTexture.m_InputPath, &x, &y, &ch, 4);
+        pixel_data   = (uint8_t*) stbi_load(g_app.m_Params.m_PathInput, &x, &y, &ch, 4);
         pixel_format = SG_PIXELFORMAT_RGBA8;
         pixel_size   = x * y * 4 * sizeof(uint8_t);
-        printf("Input environment: RGBA8\n");
+    }
+
+    if (pixel_data == 0)
+    {
+        printf("Unable to load image from %s\n", g_app.m_Params.m_PathInput);
+        return false;
+    }
+
+    if (pixel_format == SG_PIXELFORMAT_RGBA32F)
+    {
+        LOG_VERBOSE("Input environment: HDR\n");
+    }
+    else
+    {
+        LOG_VERBOSE("Input environment: RGBA8\n");
     }
 
     sg_image_data img_data       = {};
@@ -265,6 +300,7 @@ static void make_environment_image()
     g_app.m_EnvironmentTexture.m_MipmapCount = 1 + floor(log2(fmax(x, y)));
 
     stbi_image_free(pixel_data);
+    return true;
 }
 
 static void make_brdf_lut_pass()
@@ -638,7 +674,6 @@ static void flip_image_y(void* pixels, int rows, int pitch)
 
 void write_prefilter(int side, int mipmap)
 {
-#if defined(SOKOL_GLCORE33)
     uint32_t size        = 256 >> mipmap;
     uint32_t pixel_count = size * size * 4;
     uint8_t* pixels      = (uint8_t*) malloc(pixel_count * sizeof(uint8_t));
@@ -655,12 +690,10 @@ void write_prefilter(int side, int mipmap)
         printf("Failed to write debug texture\n");
     }
     free(pixels);
-#endif
 }
 
 void write_side(int side)
 {
-#if defined(SOKOL_GLCORE33)
     uint32_t pixel_count = 64 * 64 * 4;
     uint8_t* pixels = (uint8_t*) malloc(pixel_count * sizeof(uint8_t));
 
@@ -675,12 +708,10 @@ void write_side(int side)
         printf("Failed to write debug texture\n");
     }
     free(pixels);
-#endif
 }
 
 void write_brdf_lut()
 {
-#if defined(SOKOL_GLCORE33)
     uint32_t pixel_count = 512 * 512 * 4;
     uint8_t* pixels = (uint8_t*) malloc(pixel_count * sizeof(uint8_t));
 
@@ -691,37 +722,13 @@ void write_brdf_lut()
         printf("Failed to write debug texture\n");
     }
     free(pixels);
-#endif
 }
 
 void write_float_buffer(const char* output_path, float* data, uint32_t data_size)
 {
-    FILE* f = fopen(output_path, "wb");
+    FILE* f              = fopen(output_path, "wb");
     size_t bytes_written = fwrite(data, data_size, 1, f);
     fclose(f);
-}
-
-void generate_defold_image_buffer(const char* output_path, float* pixels, uint32_t pixel_count)
-{
-    /*
-    sjson_context* json_ctx = sjson_create_context(0, 0, 0);
-    sjson_node* json_root   = sjson_mkarray(json_ctx);
-    sjson_node* json_stream = sjson_mkobject(json_ctx);
-
-    sjson_append_element(json_root, json_stream);
-    sjson_put_string(json_ctx, json_stream, "name",  "color");
-    sjson_put_string(json_ctx, json_stream, "type",  "float32");
-    sjson_put_int(json_ctx,    json_stream, "count", 4);
-    sjson_put_floats(json_ctx, json_stream, "data",  pixels, pixel_count);
-
-    char* json_src = sjson_encode(json_ctx, json_root);
-
-    FILE* f = fopen(output_path, "wb");
-    size_t bytes_written = fwrite(pixels, pixel_count * sizeof(float), 1, f);
-    fclose(f);
-
-    sjson_destroy_context(json_ctx);
-    */
 }
 
 void write_output_data()
@@ -739,8 +746,10 @@ void write_output_data()
 
     // Generate diffuse irradiance buffers
     {
-        const char* output_path_base = "build/irradiance.bin";
-        printf("Writing irradiance images to %s*\n", output_path_base);
+        char output_path_irridance[256];
+        sprintf(output_path_irridance, "%s/irradiance.bin", g_app.m_Params.m_PathDirectory);
+
+        LOG_VERBOSE("Writing irradiance images to %s*\n", output_path_irridance);
 
         // buffer for each individual side
         uint32_t data_size_side = g_app.m_DiffuseIrradiancePass.m_Size * g_app.m_DiffuseIrradiancePass.m_Size * 4 * sizeof(float);
@@ -759,7 +768,7 @@ void write_output_data()
             memcpy(write_ptr, pixels_side, data_size_side);
         }
 
-        write_float_buffer(output_path_base, pixels, data_size);
+        write_float_buffer(output_path_irridance, pixels, data_size);
 
         free(pixels_side);
         free(pixels);
@@ -767,8 +776,10 @@ void write_output_data()
 
     // Generate prefilter buffers
     {
-        const char* output_path_base = "build/prefilter";
-        printf("Writing prefilter images to %s*\n", output_path_base);
+        char output_path_prefiter_base[256];
+        sprintf(output_path_prefiter_base, "%s/prefilter", g_app.m_Params.m_PathDirectory);
+
+        LOG_VERBOSE("Writing prefilter images to %s*\n", output_path_prefiter_base);
 
         // buffer for each individual side
         uint32_t data_size_side = g_app.m_PrefilterPass.m_Size * g_app.m_PrefilterPass.m_Size * 4 * sizeof(float);
@@ -792,9 +803,9 @@ void write_output_data()
                 memcpy(write_ptr, pixels_side, mipmap_data_size_side);
             }
 
-            char path_buffer[128];
-            sprintf(path_buffer, "%s_mm_%d.bin", output_path_base, mip);
-            write_float_buffer(path_buffer, pixels, mipmap_data_size);
+            char output_path_prefite_slice[128];
+            sprintf(output_path_prefite_slice, "%s_mm_%d.bin", output_path_prefiter_base, mip);
+            write_float_buffer(output_path_prefite_slice, pixels, mipmap_data_size);
         }
 
         free(pixels);
@@ -803,17 +814,18 @@ void write_output_data()
 
     // Generate BRDF buffer
     {
-        const char* output_path = "build/brdf_lut.bin";
-        printf("Writing BRDF Lut to %s\n", output_path);
+        char output_path_brdf_lut[256];
+        sprintf(output_path_brdf_lut, "%s/brdf_lut.bin", g_app.m_Params.m_PathDirectory);
+        LOG_VERBOSE("Writing BRDF Lut to %s\n", output_path_brdf_lut);
 
         uint32_t pixel_count    = g_app.m_BRDFLutPass.m_Size * g_app.m_BRDFLutPass.m_Size * 4;
         float* pixels           = (float*) malloc(pixel_count * sizeof(float));
         sg_query_image_pixels(g_app.m_BRDFLutPass.m_Image, pixels, GL_TEXTURE_2D, GL_FLOAT, 0);
-        write_float_buffer(output_path, pixels, pixel_count * sizeof(float));
+        write_float_buffer(output_path_brdf_lut, pixels, pixel_count * sizeof(float));
         free(pixels);
     }
 
-    printf("Writing complete!\n");
+    LOG_VERBOSE("Writing complete!\n");
 #endif
 }
 
@@ -918,6 +930,8 @@ void frame(void)
         //////////////////////////////////////////////////////////////////////
         write_output_data();
 
+        LOG_INFO("Finished generating!\n");
+
     #if 0
         /*
         for (int mip = 0; mip < num_mipmaps; ++mip)
@@ -937,6 +951,11 @@ void frame(void)
         write_side(5);
         write_brdf_lut();
     #endif
+    }
+
+    if (!g_app.m_Params.m_Preview)
+    {
+        exit(0);
     }
 
     // Display pass
@@ -1017,7 +1036,10 @@ void init(void)
     {
         make_display_pass();
         make_cube();
-        make_environment_image();
+        if (!make_environment_image())
+        {
+            exit(-1);
+        }
         make_environment_pass();
         make_diffuse_irradiance_pass();
         make_prefilter_pass();
@@ -1030,6 +1052,148 @@ void init(void)
     }
 }
 
+app_params get_default_app_params()
+{
+    app_params params;
+    params.m_Verbose       = false;
+    params.m_PathInput     = "";
+    params.m_PathDirectory = "";
+
+    return params;
+}
+
+void print_app_params(app_params params)
+{
+    if (!params.m_Verbose)
+    {
+        return;
+    }
+#define TRUE_FALSE_LABEL(cond) (cond?"TRUE":"FALSE")
+    printf("----------- Configuration -----------\n");
+    printf("Input path        : %s\n", params.m_PathInput);
+    printf("Output directory  : %s\n", params.m_PathDirectory);
+    printf("Preview           : %s\n", TRUE_FALSE_LABEL(params.m_Preview));
+    printf("-------------------------------------\n");
+#undef TRUE_FALSE_LABEL
+}
+
+void ShowUsage()
+{
+    printf("--------------- Help ---------------\n");
+    printf("Usage: pbr-utils <input-file> <output-file> [options]\n");
+    printf("Options:\n");
+    printf("  --verbose : Enable verbose logging\n");
+    printf("  --preview : Enable preview rendering\n");
+    printf("  --help    : Show this help screen\n");
+    printf("-------------------------------------\n");
+}
+
+int str_case_cmp(const char *s1, const char *s2)
+{
+#ifdef _WIN32
+    return _stricmp(s1, s2);
+#else
+    return strcasecmp(s1, s2);
+#endif
+}
+
+bool is_app_arg(const char* arg)
+{
+    size_t str_len = strlen(arg);
+    return str_len > 2 && arg[0] == '-' && arg[1] == '-';
+}
+
+bool directory_exists(const char* path)
+{
+    DIR* dir = opendir(path);
+    if (dir)
+    {
+        closedir(dir);
+        return true;
+    }
+    return false;
+}
+
+int validate_app_arguments(app_params* params)
+{
+    if (!params->m_PathInput || is_app_arg(params->m_PathInput))
+    {
+        return PARAMS_RESULT_INCORRECT_INPUT;
+    }
+    else if (!params->m_PathDirectory || is_app_arg(params->m_PathDirectory) || !directory_exists(params->m_PathDirectory))
+    {
+        return PARAMS_RESULT_INCORRECT_OUTPUT_DIRECTORY;
+    }
+
+    return PARAMS_RESULT_OK;
+}
+
+int parse_arguments(int argc, char* argv[], app_params* params)
+{
+    params->m_PathInput     = argc > 1 ? argv[1] : 0;
+    params->m_PathDirectory = argc > 2 ? argv[2] : 0;
+
+    for (int i = 0; i < argc; ++i)
+    {
+        if (is_app_arg(argv[i]))
+        {
+            const char* actual_arg    = argv[i]+2;
+            #define CMP_ARG(name)      (str_case_cmp(actual_arg, name) == 0)
+            #define CMP_ARG_1_OP(name) (CMP_ARG(name) && (i+1) < argc)
+
+            if (CMP_ARG("verbose"))
+            {
+                params->m_Verbose = 1;
+            }
+            else if (CMP_ARG("help"))
+            {
+                ShowUsage();
+                return PARAMS_RESULT_SHOW_HELP;
+            }
+            else if (CMP_ARG("preview"))
+            {
+                params->m_Preview = true;
+            }
+            /*
+            else if (CMP_ARG_1_OP("output-directory"))
+            {
+                params->m_PathDirectory = argv[++i];
+            }
+            */
+
+            #undef CMP_ARG_1_OP
+            #undef CMP_ARG
+        }
+    }
+
+    return validate_app_arguments(params);
+}
+
+void handle_parse_result(int res, app_params* params)
+{
+#define GET_STRING_OR_NULL(str) (str ? str : "<null>")
+
+    if (res == PARAMS_RESULT_OK)
+    {
+        return;
+    }
+
+    printf("ERROR! ");
+    if (res == PARAMS_RESULT_INCORRECT_INPUT)
+    {
+        printf("Incorrect input passed (arg=1) '%s'\n", GET_STRING_OR_NULL(params->m_PathInput));
+    }
+    else if (res == PARAMS_RESULT_INCORRECT_OUTPUT_DIRECTORY)
+    {
+        printf("Incorrect directory passed (arg=2) '%s'\n", GET_STRING_OR_NULL(params->m_PathDirectory));
+    }
+
+    ShowUsage();
+
+    exit(-1);
+#undef GET_STRING_OR_NULL
+}
+
 sapp_desc sokol_main(int argc, char* argv[])
 {
     if (argc <= 1)
@@ -1038,7 +1202,11 @@ sapp_desc sokol_main(int argc, char* argv[])
         exit(-1);
     }
 
-    g_app.m_EnvironmentTexture.m_InputPath = argv[1];
+    g_app.m_Params = get_default_app_params();
+
+    handle_parse_result(parse_arguments(argc, argv, &g_app.m_Params), &g_app.m_Params);
+
+    print_app_params(g_app.m_Params);
 
     return (sapp_desc)
     {
