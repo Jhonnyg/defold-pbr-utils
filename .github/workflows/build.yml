@@ -15,6 +15,6 @@ jobs:
         - name: Archive results
           uses: actions/upload-artifact@v3
           with:
-            name: macOS defold-pbr-utils
+            name: defold-pbr-utils-osx
             path: |
               ./build/pbr-utils
