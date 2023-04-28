@@ -6,6 +6,19 @@ on:
       - '*'
 
 jobs:
+  build-windows:
+      runs-on: windows-latest
+      steps:
+        - uses: actions/checkout@v2
+        - name: Build PBR Utils for macos
+          run: ./build.sh
+          shell: bash
+        - name: Archive results
+          uses: actions/upload-artifact@v3
+          with:
+            name: defold-pbr-utils-windows
+            path: |
+              ./build/pbr-utils.exe
     build-macos:
       runs-on: macos-latest
       steps:
