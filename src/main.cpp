@@ -29,8 +29,10 @@
 
 // Logging
 #define LOG_VERBOSE(...) if (g_app.m_Params.m_Verbose) printf("[VERBOSE]: "); printf(__VA_ARGS__);
-#define LOG_INFO(...) printf("[INFO]: "); printf(__VA_ARGS__);
+#define LOG_INFO(...)                                  printf("[INFO]: ");    printf(__VA_ARGS__);
+#define LOG_ERROR(...)                                 printf("[ERROR]: ");   printf(__VA_ARGS__);
 
+// Windows needs an OpenGL loader for these extra functions
 #if defined(_WIN32)
     typedef PROC (WINAPI * PFN_WGLGETPROCADDRESSPROC)(LPCSTR);
     typedef void (WINAPI * PFN_GLGETTEXIMAGEPROC)    (GLenum, GLint, GLenum, GLenum, void*);
@@ -75,6 +77,7 @@ typedef struct
     const char* m_PathInput;
     const char* m_PathDirectory;
     int         m_GenerateMask;
+    bool        m_GenerateMetaData;
     bool        m_Verbose;
     bool        m_Preview;
 } app_params;
@@ -145,9 +148,10 @@ struct app
     uint8_t m_IsDone : 1;
 } g_app = {};
 
+
+// Extra hooks for sokol because there's some functions missing
 static void sg_update_texture_filter(sg_image img_id, sg_filter min_filter, sg_filter mag_filter)
 {
-#if defined(SOKOL_GLCORE33)
     SOKOL_ASSERT(img_id.id != SG_INVALID_ID);
     _sg_image_t* img = _sg_lookup_image(&_sg.pools, img_id.id);
     SOKOL_ASSERT(img);
@@ -162,24 +166,20 @@ static void sg_update_texture_filter(sg_image img_id, sg_filter min_filter, sg_f
     glTexParameteri(img->gl.target, GL_TEXTURE_MAG_FILTER, (GLint)gl_mag_filter);
     _SG_GL_CHECK_ERROR();
     _sg_gl_cache_restore_texture_binding(0);
-#endif
 }
 
 static void sg_query_image_pixels(sg_image img_id, void* pixels, int target, int data_type, int mipmap)
 {
-#if defined(SOKOL_GLCORE33)
     _sg_image_t* img = _sg_lookup_image(&_sg.pools, img_id.id);
     _sg_gl_cache_store_texture_binding(0);
     _sg_gl_cache_bind_texture(0, img->gl.target, img->gl.tex[img->cmn.active_slot]);
     glGetTexImage(target, mipmap, GL_RGBA, data_type, pixels);
     _SG_GL_CHECK_ERROR();
     _sg_gl_cache_restore_texture_binding(0);
-#endif
 }
 
 static void sg_generate_mipmaps(sg_image img_id)
 {
-#if defined(SOKOL_GLCORE33)
     _sg_image_t* img = _sg_lookup_image(&_sg.pools, img_id.id);
     _sg_gl_cache_store_texture_binding(0);
     _sg_gl_cache_bind_texture(0, img->gl.target, img->gl.tex[img->cmn.active_slot]);
@@ -190,7 +190,6 @@ static void sg_generate_mipmaps(sg_image img_id)
 
     _SG_GL_CHECK_ERROR();
     _sg_gl_cache_restore_texture_binding(0);
-#endif
 }
 
 static void make_cube()
@@ -739,10 +738,74 @@ void write_float_buffer(const char* output_path, float* data, uint32_t data_size
     fclose(f);
 }
 
+static void fill_base_name(const char* file_path, char* buf)
+{
+    size_t path_len = strlen(file_path);
+    uint32_t last_slash = 0;
+
+    for (int i = path_len; i >= 0; --i)
+    {
+        if (file_path[i] == '/')
+        {
+            last_slash = i;
+            break;
+        }
+    }
+
+    const char* ptr = file_path + last_slash + 1;
+    memcpy(buf, ptr, path_len - last_slash);
+    buf[path_len] = 0;
+}
+
+static void fill_base_directory(const char* directory_path, char* buf)
+{
+    uint32_t start_copy = 0;
+    size_t path_len = strlen(directory_path);
+
+    if (directory_path[0] == '/')
+    {
+        start_copy++;
+    }
+
+    buf[0]        = '/';
+    buf[path_len] = 0;
+
+    memcpy(buf + 1, directory_path + start_copy, path_len - start_copy);
+}
+
+void write_meta_data(const char* output_path)
+{
+    FILE* f = fopen(output_path, "wb");
+
+    const char* meta_data_template =
+        "return\n"
+        "(\n"
+        "    name            = %s\n"
+        "    path            = %s\n"
+        "    irradiance_size = %d\n"
+        "    prefilter_size  = %d\n"
+        "    brdf_lut_size   = %d\n"
+        "}\n";
+
+    char name_buffer[256];
+    fill_base_name(g_app.m_Params.m_PathInput, name_buffer);
+
+    char path_buffer[256];
+    fill_base_directory(g_app.m_Params.m_PathDirectory, path_buffer);
+
+    char data_buffer[512];
+    sprintf(data_buffer, meta_data_template, name_buffer, path_buffer,
+        g_app.m_DiffuseIrradiancePass.m_Size,
+        g_app.m_PrefilterPass.m_Size,
+        g_app.m_BRDFLutPass.m_Size);
+
+    fwrite(data_buffer, strlen(data_buffer), 1, f);
+
+    fclose(f);
+}
+
 void write_output_data()
 {
-#if defined(SOKOL_GLCORE33)
-
     int gl_to_defold_side_mapping[] = {
         GL_TEXTURE_CUBE_MAP_POSITIVE_X,
         GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
@@ -836,8 +899,15 @@ void write_output_data()
         free(pixels);
     }
 
+    // Generate lua table
+    if (g_app.m_Params.m_GenerateMetaData)
+    {
+        char output_path_meta_data[256];
+        sprintf(output_path_meta_data, "%s/meta.lua", g_app.m_Params.m_PathDirectory);
+        write_meta_data(output_path_meta_data);
+    }
+
     LOG_VERBOSE("Writing complete!\n");
-#endif
 }
 
 void frame(void)
@@ -1080,8 +1150,8 @@ app_params get_default_app_params()
 {
     app_params params;
     params.m_Verbose       = false;
-    params.m_PathInput     = "";
-    params.m_PathDirectory = "";
+    params.m_PathInput     = NULL; // required
+    params.m_PathDirectory = NULL; // required
     params.m_GenerateMask  = GENERATE_ALL;
 
     return params;
@@ -1096,24 +1166,28 @@ void generation_mask_to_str(int mask_val, char* mask)
     }
 
     char* _mask = mask;
+
+#define WRITE_MASK(name) \
+    char* mask_str = name " "; \
+    size_t mask_len = strlen(mask_str); \
+    memcpy(_mask, mask_str, mask_len); \
+    _mask += mask_len;
+
     if (mask_val & GENERATE_BRDF_LUT)
     {
-        char* mask_str = "brdf ";
-        memcpy(_mask, mask_str, strlen(mask_str));
-        _mask += strlen(mask_str);
+        WRITE_MASK("brdf");
     }
     if (mask_val & GENERATE_DIFFUSE_IRRADIANCE)
     {
-        char* mask_str = "irradiance ";
-        memcpy(_mask, mask_str, strlen(mask_str));
-        _mask += strlen(mask_str);
+        WRITE_MASK("irradiance");
     }
     if (mask_val & GENERATE_PREFILTERED_ENVIRONMENT)
     {
-        char* mask_str = "prefilter ";
-        memcpy(_mask, mask_str, strlen(mask_str));
-        _mask += strlen(mask_str);
+        WRITE_MASK("prefilter");
     }
+#undef WRITE_MASK
+
+    mask[_mask - mask] = 0;
 }
 
 void print_app_params(app_params params)
@@ -1128,10 +1202,11 @@ void print_app_params(app_params params)
 
 #define TRUE_FALSE_LABEL(cond) (cond?"TRUE":"FALSE")
     printf("----------- Configuration -----------\n");
-    printf("Input path        : %s\n", params.m_PathInput);
-    printf("Output directory  : %s\n", params.m_PathDirectory);
-    printf("Generate          : %s\n", mask_str);
-    printf("Preview           : %s\n", TRUE_FALSE_LABEL(params.m_Preview));
+    printf("Input path         : %s\n", params.m_PathInput);
+    printf("Output directory   : %s\n", params.m_PathDirectory);
+    printf("Generate           : %s\n", mask_str);
+    printf("Generate meta-data : %s\n", TRUE_FALSE_LABEL(params.m_GenerateMetaData));
+    printf("Preview            : %s\n", TRUE_FALSE_LABEL(params.m_Preview));
     printf("-------------------------------------\n");
 #undef TRUE_FALSE_LABEL
 }
@@ -1146,6 +1221,7 @@ void show_usage()
     printf("      brdf           : Generate only BRDF lut map\n");
     printf("      irradiance     : Generate only diffuse irradiance map\n");
     printf("      prefilter      : Generate only prefiltered environment map\n");
+    printf("  --meta-data        : Generate meta-data about generation (in lua format)\n");
     printf("  --verbose          : Enable verbose logging\n");
     printf("  --preview          : Enable preview rendering\n");
     printf("  --help             : Show this help screen\n");
@@ -1220,6 +1296,10 @@ int parse_arguments(int argc, char* argv[], app_params* params)
             {
                 params->m_Preview = true;
             }
+            else if (CMP_ARG("meta-data"))
+            {
+                params->m_GenerateMetaData = true;
+            }
             else if (CMP_ARG_1_OP("generate"))
             {
                 i++;
@@ -1235,6 +1315,10 @@ int parse_arguments(int argc, char* argv[], app_params* params)
                 {
                     generation_mask |= GENERATE_DIFFUSE_IRRADIANCE;
                 }
+            }
+            else
+            {
+                LOG_INFO("Argument '%s' is unsupported", argv[i]);
             }
 
             #undef CMP_ARG_1_OP
@@ -1279,7 +1363,7 @@ sapp_desc sokol_main(int argc, char* argv[])
 {
     if (argc <= 1)
     {
-        printf("At least one argument required\n");
+        LOG_ERROR("At least one argument required\n");
         exit(-1);
     }
 
