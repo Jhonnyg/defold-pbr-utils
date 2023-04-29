@@ -83,3 +83,8 @@ ${SOKOL_SDHC_CMD} --input assets/shaders.glsl --output src/shaders.glsl.h --slan
 
 cd build
 make all
+
+if [ "$PLATFORM" != "windows" ]; then
+	chmod +x pbr-utils
+fi
+
