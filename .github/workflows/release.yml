@@ -25,6 +25,27 @@ jobs:
             Release
           draft: false
           prerelease: false
+  build-windows:
+    name: Create Release (Windows)
+    runs-on: windows-latest
+    needs: create-release
+    steps:
+      - uses: actions/checkout@v1
+      - name: Checkout submodules
+        run: git submodule init && git submodule update --init --recursive
+      - name: Building...
+        run: |
+          bash ./build.sh
+      - name: Upload Release Asset (Windows)
+        id: upload-release-asset-windows
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: build/pbr-utils.exe
+          asset_name: pbr-utils-windows.exe
+          asset_content_type: application/octet-stream
   build-macos:
     name: Create Release (macos)
     runs-on: macos-latest
