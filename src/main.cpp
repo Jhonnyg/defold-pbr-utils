@@ -780,8 +780,8 @@ void write_meta_data(const char* output_path)
     const char* meta_data_template =
         "return\n"
         "(\n"
-        "    name            = %s\n"
-        "    path            = %s\n"
+        "    name            = \"%s\"\n"
+        "    path            = \"%s\"\n"
         "    irradiance_size = %d\n"
         "    prefilter_size  = %d\n"
         "    brdf_lut_size   = %d\n"
