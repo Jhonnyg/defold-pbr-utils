@@ -1,0 +1,47 @@
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - '*' # Push events to matching v*, i.e. v1.0, v20.15.10
+
+name: Create Release
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+            Release
+          draft: false
+          prerelease: false
+  build-macos:
+    name: Create Release (macos)
+    runs-on: macos-latest
+    needs: create-release
+    steps:
+      - uses: actions/checkout@v1
+      - name: Checkout submodules
+        run: git submodule init && git submodule update --init --recursive
+      - name: Build PBR Utils (macos)
+        run: ./build.sh
+      - name: Upload Release Asset (macos)
+        id: upload-release-asset-macos
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: build/pbr-utils
+          asset_name: pbr-utils-macos
+          asset_content_type: application/octet-stream
