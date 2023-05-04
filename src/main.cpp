@@ -42,9 +42,12 @@
     static HINSTANCE g_opengl32_dll                      = 0;
     static PFN_WGLGETPROCADDRESSPROC g_wglGetProcAddress = 0;
 
-    // GL Functions
+    // OpenGL Function ptrs
     static PFN_GLGETTEXIMAGEPROC    glGetTexImage    = NULL;
     static PFN_GLGENERATEMIPMAPPROC glGenerateMipmap = NULL;
+
+    // OpenGL Defines
+    #define GL_TEXTURE_CUBE_MAP_SEAMLESS 0x884F
 #endif
 
 // Error message numbers
@@ -1280,11 +1283,11 @@ void show_usage()
     printf("--------------- Help ---------------\n");
     printf("Usage: pbr-utils <input-file> <output-file> [options]\n");
     printf("Options:\n");
-    printf("  --generate <value> : What to generate, where value is:\n");
+    printf("  --generate <value> : What to generate (can be multiple), where value is:\n");
     printf("      all            : Generate BRDF lut, diffuse irradiance, prefiltered environment (default)\n");
-    printf("      brdf           : Generate only BRDF lut map\n");
-    printf("      irradiance     : Generate only diffuse irradiance map\n");
-    printf("      prefilter      : Generate only prefiltered environment map\n");
+    printf("      brdf           : Generate BRDF lut map\n");
+    printf("      irradiance     : Generate diffuse irradiance map\n");
+    printf("      prefilter      : Generate prefiltered environment map\n");
     printf("  --meta-data        : Generate meta-data about generation (in lua format)\n");
     printf("  --verbose          : Enable verbose logging\n");
     printf("  --preview          : Enable preview rendering\n");
