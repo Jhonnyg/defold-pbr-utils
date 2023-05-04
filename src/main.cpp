@@ -731,11 +731,46 @@ void write_brdf_lut()
     free(pixels);
 }
 
-void write_float_buffer(const char* output_path, float* data, uint32_t data_size)
+static void write_bytes_to_file(const char* output_path, uint8_t* data, uint32_t data_size)
 {
     FILE* f              = fopen(output_path, "wb");
     size_t bytes_written = fwrite(data, data_size, 1, f);
     fclose(f);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// From: https://stackoverflow.com/questions/1659440/32-bit-to-16-bit-floating-point-conversion
+typedef uint16_t ushort;
+typedef uint32_t uint;
+
+uint as_uint(const float x) {
+    return *(uint*)&x;
+}
+float as_float(const uint x) {
+    return *(float*)&x;
+}
+
+float half_to_float(const ushort x) { // IEEE-754 16-bit floating-point format (without infinity): 1-5-10, exp-15, +-131008.0, +-6.1035156E-5, +-5.9604645E-8, 3.311 digits
+    const uint e = (x&0x7C00)>>10; // exponent
+    const uint m = (x&0x03FF)<<13; // mantissa
+    const uint v = as_uint((float)m)>>23; // evil log2 bit hack to count leading zeros in denormalized format
+    return as_float((x&0x8000)<<16 | (e!=0)*((e+112)<<23|m) | ((e==0)&(m!=0))*((v-37)<<23|((m<<(150-v))&0x007FE000))); // sign : normalized : denormalized
+}
+ushort float_to_half(const float x) { // IEEE-754 16-bit floating-point format (without infinity): 1-5-10, exp-15, +-131008.0, +-6.1035156E-5, +-5.9604645E-8, 3.311 digits
+    const uint b = as_uint(x)+0x00001000; // round-to-nearest-even: add last bit after truncated mantissa
+    const uint e = (b&0x7F800000)>>23; // exponent
+    const uint m = b&0x007FFFFF; // mantissa; in line below: 0x007FF000 = 0x00800000-0x00001000 = decimal indicator flag - initial rounding
+    return (b&0x80000000)>>16 | (e>112)*((((e-112)<<10)&0x7C00)|m>>13) | ((e<113)&(e>101))*((((0x007FF000+m)>>(125-e))+1)>>1) | (e>143)*0x7FFF; // sign : normalized : denormalized : saturate
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+static void float32_to_float16(float* floats_in, uint32_t num_floats_in, uint16_t* half_floats_out)
+{
+    for (int i = 0; i < num_floats_in; ++i)
+    {
+        half_floats_out[i] = float_to_half(floats_in[i]);
+    }
 }
 
 static void fill_base_name(const char* file_path, char* buf)
@@ -788,12 +823,15 @@ void write_meta_data(const char* output_path)
         "}\n";
 
     char name_buffer[256];
+    memset(name_buffer, 0, sizeof(name_buffer));
     fill_base_name(g_app.m_Params.m_PathInput, name_buffer);
 
     char path_buffer[256];
+    memset(path_buffer, 0, sizeof(path_buffer));
     fill_base_directory(g_app.m_Params.m_PathDirectory, path_buffer);
 
     char data_buffer[512];
+    memset(data_buffer, 0, sizeof(data_buffer));
     sprintf(data_buffer, meta_data_template, name_buffer, path_buffer,
         g_app.m_DiffuseIrradiancePass.m_Size,
         g_app.m_PrefilterPass.m_Size,
@@ -821,7 +859,9 @@ void write_output_data()
         char output_path_irridance[256];
         sprintf(output_path_irridance, "%s/irradiance.bin", g_app.m_Params.m_PathDirectory);
 
-        LOG_INFO("Writing irradiance images to %s*\n", output_path_irridance);
+        LOG_INFO("Writing irradiance images to %s* with type (float16)\n", output_path_irridance);
+
+        // TODO: Output type should be configurable by arguments
 
         // buffer for each individual side
         uint32_t data_size_side = g_app.m_DiffuseIrradiancePass.m_Size * g_app.m_DiffuseIrradiancePass.m_Size * 4 * sizeof(float);
@@ -829,7 +869,7 @@ void write_output_data()
 
         // pixel buffer for entire cubemap
         uint32_t data_size = data_size_side * 6;
-        float* pixels        = (float*) malloc(data_size);
+        float* pixels      = (float*) malloc(data_size);
 
         for (int side = 0; side < 6; ++side)
         {
@@ -840,10 +880,15 @@ void write_output_data()
             memcpy(write_ptr, pixels_side, data_size_side);
         }
 
-        write_float_buffer(output_path_irridance, pixels, data_size);
+        uint32_t half_float_buffer_data_size = data_size / 2;
+        uint16_t* half_float_buffer          = (uint16_t*) malloc(data_size / 2);
+
+        float32_to_float16(pixels, data_size / sizeof(float), half_float_buffer);
+        write_bytes_to_file(output_path_irridance, (uint8_t*) half_float_buffer, half_float_buffer_data_size);
 
         free(pixels_side);
         free(pixels);
+        free(half_float_buffer);
     }
 
     // Generate prefilter buffers
@@ -878,7 +923,15 @@ void write_output_data()
 
             char output_path_prefite_slice[128];
             sprintf(output_path_prefite_slice, "%s_mm_%d.bin", output_path_prefiter_base, mip);
-            write_float_buffer(output_path_prefite_slice, pixels, mipmap_data_size);
+
+            uint32_t half_float_buffer_data_size = mipmap_data_size / 2;
+            uint16_t* half_float_buffer          = (uint16_t*) malloc(mipmap_data_size / 2);
+
+            float32_to_float16(pixels, mipmap_data_size / sizeof(float), half_float_buffer);
+
+            write_bytes_to_file(output_path_prefite_slice, (uint8_t*) half_float_buffer, half_float_buffer_data_size);
+
+            free(half_float_buffer);
         }
 
         free(pixels);
@@ -893,9 +946,18 @@ void write_output_data()
         LOG_INFO("Writing BRDF Lut to %s\n", output_path_brdf_lut);
 
         uint32_t pixel_count    = g_app.m_BRDFLutPass.m_Size * g_app.m_BRDFLutPass.m_Size * 4;
-        float* pixels           = (float*) malloc(pixel_count * sizeof(float));
+        uint32_t data_size      = pixel_count * sizeof(float);
+        float* pixels           = (float*) malloc(data_size);
         sg_query_image_pixels(g_app.m_BRDFLutPass.m_Image, pixels, GL_TEXTURE_2D, GL_FLOAT, 0);
-        write_float_buffer(output_path_brdf_lut, pixels, pixel_count * sizeof(float));
+
+        uint32_t half_float_buffer_data_size = data_size / 2;
+        uint16_t* half_float_buffer          = (uint16_t*) malloc(half_float_buffer_data_size);
+
+        float32_to_float16(pixels, pixel_count, half_float_buffer);
+
+        write_bytes_to_file(output_path_brdf_lut, (uint8_t*) half_float_buffer, half_float_buffer_data_size);
+
+        free(half_float_buffer);
         free(pixels);
     }
 
@@ -1125,6 +1187,8 @@ void init(void)
     };
 
     sg_setup(&app_desc);
+
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
     if (init_platform())
     {
