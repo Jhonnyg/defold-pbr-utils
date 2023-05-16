@@ -4,7 +4,7 @@ export PLATFORM_EXT=""
 
 if [ "$(uname)" == "Darwin" ]; then
     export PLATFORM="macos"
-elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW64_NT" ]; then
+elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW64_NT" ] || [ "$(expr substr $(uname -s) 1 7)" == "MSYS_NT" ]; then
     export PLATFORM="windows"
     export PLATFORM_EXT=".exe"
 else
