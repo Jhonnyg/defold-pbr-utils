@@ -87,16 +87,14 @@ if [ ! -f "$PWD/${BUILD_FOLDER}/${LINMATH}" ]; then
     curl https://raw.githubusercontent.com/datenwolf/linmath.h/master/${LINMATH} --output-dir ${BUILD_FOLDER} -o ${LINMATH}
 fi
 
-SJON=sjson.h
-
-if [ ! -f "$PWD/${BUILD_FOLDER}/${SJON}" ]; then
-    curl https://raw.githubusercontent.com/septag/sjson/master/${SJON} --output-dir ${BUILD_FOLDER} -o ${SJON}
-fi
-
-${SOKOL_SDHC_CMD} --input assets/shaders.glsl --output src/shaders.metal.h --slang metal_macos
 ${SOKOL_SDHC_CMD} --input assets/shaders.glsl --output src/shaders.glsl.h --slang glsl330
 
 ./${GENIE_CMD} --file=premake.lua gmake
 
 cd build
 make all
+
+if [ "$PLATFORM" != "windows" ]; then
+	chmod +x pbr-utils
+fi
+
