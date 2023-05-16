@@ -10,6 +10,8 @@ jobs:
       runs-on: ubuntu-latest
       steps:
         - uses: actions/checkout@v2
+        - name: Install dependencies for Linux
+          run: sudo apt-get install libxi-dev
         - name: Build PBR Utils for Linux
           run: ./build.sh
         - name: Archive results
