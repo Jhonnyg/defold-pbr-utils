@@ -776,6 +776,33 @@ static void float32_to_float16(float* floats_in, uint32_t num_floats_in, uint16_
     }
 }
 
+static void ensure_unix_path(const char* file_path, char* buf)
+{
+    size_t path_len = strlen(file_path);
+
+    int read  = 0;
+    int write = 0;
+
+    if (file_path[1] == ':')
+    {
+        buf[0] = file_path[0];
+        read = 2;
+        write = 1;
+    }
+
+    for (; read < path_len; ++read, ++write)
+    {
+        if (file_path[read] == '\\')
+        {
+            buf[write] = '/';
+        }
+        else
+        {
+            buf[write] = file_path[read];
+        }
+    }
+}
+
 static void fill_base_name(const char* file_path, char* buf)
 {
     size_t path_len = strlen(file_path);
@@ -825,16 +852,26 @@ void write_meta_data(const char* output_path)
         "    brdf_lut_size   = %d,\n"
         "}\n";
 
+    #define ZERO_STR(the_path) memset(the_path, 0, sizeof(the_path))
+
+    char tmp_buffer[256];
+    ZERO_STR(tmp_buffer);
+
     char name_buffer[256];
-    memset(name_buffer, 0, sizeof(name_buffer));
-    fill_base_name(g_app.m_Params.m_PathInput, name_buffer);
+    ZERO_STR(name_buffer);
+
+    ensure_unix_path(g_app.m_Params.m_PathInput, tmp_buffer);
+    fill_base_name(tmp_buffer, name_buffer);
 
     char path_buffer[256];
-    memset(path_buffer, 0, sizeof(path_buffer));
-    fill_base_directory(g_app.m_Params.m_PathDirectory, path_buffer);
+    ZERO_STR(tmp_buffer);
+    ZERO_STR(path_buffer);
+
+    ensure_unix_path(g_app.m_Params.m_PathDirectory, tmp_buffer);
+    fill_base_directory(tmp_buffer, path_buffer);
 
     char data_buffer[512];
-    memset(data_buffer, 0, sizeof(data_buffer));
+    ZERO_STR(data_buffer);
     sprintf(data_buffer, meta_data_template, name_buffer, path_buffer,
         g_app.m_DiffuseIrradiancePass.m_Size,
         g_app.m_PrefilterPass.m_Size,
@@ -843,6 +880,8 @@ void write_meta_data(const char* output_path)
     fwrite(data_buffer, strlen(data_buffer), 1, f);
 
     fclose(f);
+
+    #undef ZERO_STR
 }
 
 void write_output_data()

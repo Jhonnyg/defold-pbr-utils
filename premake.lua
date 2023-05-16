@@ -39,6 +39,20 @@ function get_platform_config()
                 }
             end
         }
+    else
+        return {
+            buildoptions = function() end,
+            linkoptions = function()
+            end,
+            links = function()
+                links {
+                    "GL",
+                    "X11",
+                    "Xi",
+                    "Xcursor"
+                }
+            end
+        }
     end
 end
 
