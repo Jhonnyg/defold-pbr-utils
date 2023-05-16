@@ -45,6 +45,12 @@ function get_platform_config()
             linkoptions = function()
             end,
             links = function()
+                links {
+                    "GL",
+                    "X11",
+                    "Xi",
+                    "Xcursor"
+                }
             end
         }
     end
