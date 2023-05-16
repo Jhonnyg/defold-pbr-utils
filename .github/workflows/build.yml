@@ -11,7 +11,7 @@ jobs:
       steps:
         - uses: actions/checkout@v2
         - name: Install dependencies for Linux
-          run: sudo apt-get install libxi-dev
+          run: sudo apt-get install libxi-dev libx11-dev
         - name: Build PBR Utils for Linux
           run: ./build.sh
         - name: Archive results
