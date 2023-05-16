@@ -28,6 +28,10 @@ if [ ! -f "$PWD/${BUILD_FOLDER}/$GENIE" ]; then
     if [ "$PLATFORM" == "windows" ]; then
         curl https://github.com/bkaradzic/bx/raw/master/tools/bin/windows/genie.exe --output-dir ${BUILD_FOLDER} -o ${GENIE} -L
     fi
+
+    if [ "$PLATFORM" == "linux" ]; then
+        curl https://github.com/bkaradzic/bx/raw/master/tools/bin/linux/genie --output-dir ${BUILD_FOLDER} -o ${GENIE} -L
+    fi
 fi
 
 SOKOL_GFX_INCLUDE=sokol_gfx.h
@@ -57,6 +61,10 @@ if [ ! -f ${BUILD_FOLDER}/${SOKOL_SDHC} ]; then
 
     if [ "$PLATFORM" == "windows" ]; then
         curl  https://raw.githubusercontent.com/floooh/sokol-tools-bin/master/bin/win32/sokol-shdc.exe --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
+    fi
+
+    if [ "$PLATFORM" == "linux" ]; then
+        curl  https://raw.githubusercontent.com/floooh/sokol-tools-bin/master/bin/linux/sokol-shdc --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
     fi
 fi
 
