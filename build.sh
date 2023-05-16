@@ -31,6 +31,7 @@ if [ ! -f "$PWD/${BUILD_FOLDER}/$GENIE" ]; then
 
     if [ "$PLATFORM" == "linux" ]; then
         curl https://github.com/bkaradzic/bx/raw/master/tools/bin/linux/genie --output-dir ${BUILD_FOLDER} -o ${GENIE} -L
+        chmod +x $GENIE_CMD
     fi
 fi
 
@@ -65,6 +66,7 @@ if [ ! -f ${BUILD_FOLDER}/${SOKOL_SDHC} ]; then
 
     if [ "$PLATFORM" == "linux" ]; then
         curl  https://raw.githubusercontent.com/floooh/sokol-tools-bin/master/bin/linux/sokol-shdc --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
+        chmod +x ${BUILD_FOLDER}/${SOKOL_SDHC}
     fi
 fi
 
