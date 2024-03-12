@@ -34,6 +34,9 @@ jobs:
             path: |
               ./build/pbr-utils.exe
     build-macos:
+      strategy:
+      matrix:
+        platform: [x86_64-macos, arm64-macos]
       runs-on: macos-latest
       steps:
         - uses: actions/checkout@v2
@@ -44,4 +47,4 @@ jobs:
           with:
             name: defold-pbr-utils-osx
             path: |
-              ./build/pbr-utils
+              ./build/pbr-utils-${{ matrix.platform }}
