@@ -745,7 +745,7 @@ static void write_buffer_to_file(const char* output_path, uint8_t* data, uint32_
 {
     FILE* f = fopen(output_path, "wb");
 
-    const char* template =
+    const char* data_template =
         "[\n"
         "    {\n"
         "        \"name\": \"data\",\n"
@@ -758,7 +758,7 @@ static void write_buffer_to_file(const char* output_path, uint8_t* data, uint32_
 
     const uint32_t data_str_size = data_size * 4;
 
-    char* data_str_buffer = malloc(data_str_size);
+    char* data_str_buffer = (char*) malloc(data_str_size);
     char* data_str_buffer_write = data_str_buffer;
     memset(data_str_buffer, 0, data_str_size);
 
@@ -778,11 +778,11 @@ static void write_buffer_to_file(const char* output_path, uint8_t* data, uint32_
         data_str_buffer_write += written;
     }
 
-    uint32_t template_size = strlen(template);
-    char* data_buffer = malloc(data_str_size + template_size);
+    uint32_t template_size = strlen(data_template);
+    char* data_buffer = (char*) malloc(data_str_size + template_size);
     memset(data_buffer, 0, data_str_size);
 
-    sprintf(data_buffer, template, data_str_buffer);
+    sprintf(data_buffer, data_template, data_str_buffer);
 
     fwrite(data_buffer, strlen(data_buffer), 1, f);
 
@@ -895,7 +895,7 @@ static void write_meta_data_go(const char* path)
 {
     FILE* f = fopen(path, "wb");
 
-    const char* template =
+    const char* data_template =
         "components {\n"
         "  id: \"environment\"\n"
         "  component: \"%s/environment.script\"\n"
@@ -923,7 +923,7 @@ static void write_meta_data_go(const char* path)
 
     char data_buffer[512];
     ZERO_STR(data_buffer);
-    sprintf(data_buffer, template, path_buffer);
+    sprintf(data_buffer, data_template, path_buffer);
 
     fwrite(data_buffer, strlen(data_buffer), 1, f);
 
