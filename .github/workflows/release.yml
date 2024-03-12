@@ -90,5 +90,5 @@ jobs:
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
           asset_path: build/pbr-utils
-          asset_name: defold-pbr-utils-${{ matrix.platform }}
+          asset_name: pbr-utils-${{ matrix.platform }}
           asset_content_type: application/octet-stream
