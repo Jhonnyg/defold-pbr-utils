@@ -861,7 +861,7 @@ static void fill_base_name(const char* file_path, char* buf)
 
     for (int i = path_len; i >= 0; --i)
     {
-        if (file_path[i] == '/')
+        if (file_path[i] == '/' || file_path[i] == '\\')
         {
             last_slash = i;
             break;
@@ -939,8 +939,29 @@ static void write_meta_data_script(const char* path)
         "go.property(\"prefilter_size\", %d)\n"
         "go.property(\"prefilter_count\", %d)\n"
         "go.property(\"brdf_lut_size\", %d)\n"
-        // add prefilter as properties
-        "%s\n";
+        // irradiance buffer resource
+        "go.property(\"irradiance\", resource.buffer(\"%s\"))\n"
+        // add prefilter buffers as properties
+        "%s\n"
+        "local PBR = require(\"defold-pbr/core\")\n"
+        "function init(self)\n"
+        "    PBR.add_environment(\"%s\", go.get_id())\n"
+        "end\n"
+        "function on_message(self, message_id, message)\n"
+        "    if message_id == PBR.MESSAGES.LOAD_ENVIRONMENT then\n"
+        "        require(\"defold-pbr/scripts/helpers\").load_environment(PBR.context(), self)\n"
+        "    end\n"
+        "end\n";
+
+    char irradiance_project_path[256];
+    ZERO_STR(irradiance_project_path);
+    sprintf(irradiance_project_path, "%s/irradiance.buffer", g_app.m_Params.m_PathDirectory);
+
+    char tmp_buffer[256];
+    ZERO_STR(tmp_buffer);
+
+    ensure_unix_path(irradiance_project_path, tmp_buffer);
+    fill_base_directory(tmp_buffer, irradiance_project_path);
 
     char prefilter_property_buffers[1024 * 2];
     ZERO_STR(prefilter_property_buffers);
@@ -951,10 +972,9 @@ static void write_meta_data_script(const char* path)
     {
         char resource_buffer_project_path[256];
         ZERO_STR(resource_buffer_project_path);
-        sprintf(resource_buffer_project_path, "%s/prefilter_mm_%d.buffer", g_app.m_Params.m_PathDirectory, mip);
-
-        char tmp_buffer[256];
         ZERO_STR(tmp_buffer);
+
+        sprintf(resource_buffer_project_path, "%s/prefilter_mm_%d.buffer", g_app.m_Params.m_PathDirectory, mip);
 
         ensure_unix_path(resource_buffer_project_path, tmp_buffer);
         fill_base_directory(tmp_buffer, resource_buffer_project_path);
@@ -963,6 +983,10 @@ static void write_meta_data_script(const char* path)
         prefilter_property_write_ptr += written;
     }
 
+    char base_name[256];
+    ZERO_STR(base_name);
+    fill_base_name(g_app.m_Params.m_PathInput, base_name);
+
     char data_buffer[1024 * 16];
     ZERO_STR(data_buffer);
     sprintf(data_buffer, script_template,
@@ -970,7 +994,9 @@ static void write_meta_data_script(const char* path)
         g_app.m_PrefilterPass.m_Size,
         g_app.m_PrefilterPass.m_MipmapCount,
         g_app.m_BRDFLutPass.m_Size,
-        prefilter_property_buffers);
+        irradiance_project_path,
+        prefilter_property_buffers,
+        base_name);
 
     fwrite(data_buffer, strlen(data_buffer), 1, f);
 
