@@ -35,37 +35,32 @@ if [ ! -f "$PWD/${BUILD_FOLDER}/$GENIE" ]; then
     fi
 fi
 
-SOKOL_GFX_INCLUDE=sokol_gfx.h
-SOKOL_APP_INCLUDE=sokol_app.h
-SOKOL_GLUE_INCLUDE=sokol_glue.h
-
-if [ ! -f "$PWD/${BUILD_FOLDER}/${SOKOL_GFX_INCLUDE}" ]; then
-    curl https://raw.githubusercontent.com/floooh/sokol/master/${SOKOL_GFX_INCLUDE} --output-dir ${BUILD_FOLDER} -o ${SOKOL_GFX_INCLUDE}
-fi
-
-if [ ! -f "$PWD/${BUILD_FOLDER}/${SOKOL_APP_INCLUDE}" ]; then
-    curl https://raw.githubusercontent.com/floooh/sokol/master/${SOKOL_APP_INCLUDE} --output-dir ${BUILD_FOLDER} -o ${SOKOL_APP_INCLUDE}
-fi
-
-if [ ! -f "$PWD/${BUILD_FOLDER}/${SOKOL_GLUE_INCLUDE}" ]; then
-    curl https://raw.githubusercontent.com/floooh/sokol/master/${SOKOL_GLUE_INCLUDE} --output-dir ${BUILD_FOLDER} -o ${SOKOL_GLUE_INCLUDE}
-fi
+# SOKOL GFX VERSION: https://github.com/floooh/sokol/blob/1eef04f44bd59553d7d9c095eac252e52f743ec1/sokol_gfx.h
+# SOKOL GLUE VERSION: https://github.com/floooh/sokol/blob/6cca6e36d8e5fbe316a6b7b3f65ba79d9cb436de/sokol_glue.h
+# SOKOL APP VERSION: https://github.com/floooh/sokol/blob/0d7d72e6740026c2cdd7cd0a5503596efa74cb0b/sokol_app.h
 
 SOKOL_SDHC=sokol-shdc${PLATFORM_EXT}
 SOKOL_SDHC_CMD=${BUILD_FOLDER}/${SOKOL_SDHC}
 
 if [ ! -f ${BUILD_FOLDER}/${SOKOL_SDHC} ]; then
     if [ "$PLATFORM" == "macos" ]; then
-        curl https://raw.githubusercontent.com/floooh/sokol-tools-bin/master/bin/osx/sokol-shdc --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
+
+        if [[ $(uname -m) == 'arm64' ]]; then
+            export SOKOL_SDHC_ARCH=osx_arm64
+        else
+            export SOKOL_SDHC_ARCH=osx
+        fi
+
+        curl -L https://github.com/floooh/sokol-tools-bin/raw/e64ac04c971e54d4da4f5da087afe21aa27885bc/bin/${SOKOL_SDHC_ARCH}/sokol-shdc --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
         chmod +x ${BUILD_FOLDER}/${SOKOL_SDHC}
     fi
 
     if [ "$PLATFORM" == "windows" ]; then
-        curl  https://raw.githubusercontent.com/floooh/sokol-tools-bin/master/bin/win32/sokol-shdc.exe --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
+        curl -L https://github.com/floooh/sokol-tools-bin/raw/e64ac04c971e54d4da4f5da087afe21aa27885bc/bin/win32/sokol-shdc.exe --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
     fi
 
     if [ "$PLATFORM" == "linux" ]; then
-        curl  https://raw.githubusercontent.com/floooh/sokol-tools-bin/master/bin/linux/sokol-shdc --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
+        curl -L https://github.com/floooh/sokol-tools-bin/raw/e64ac04c971e54d4da4f5da087afe21aa27885bc/bin/linux/sokol-shdc --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
         chmod +x ${BUILD_FOLDER}/${SOKOL_SDHC}
     fi
 fi
