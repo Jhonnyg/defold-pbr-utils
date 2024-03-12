@@ -741,6 +741,57 @@ static void write_bytes_to_file(const char* output_path, uint8_t* data, uint32_t
     fclose(f);
 }
 
+static void write_buffer_to_file(const char* output_path, uint8_t* data, uint32_t data_size)
+{
+    FILE* f = fopen(output_path, "wb");
+
+    const char* template =
+        "[\n"
+        "    {\n"
+        "        \"name\": \"data\",\n"
+        "        \"type\": \"uint8\",\n"
+        "        \"count\": 1,\n"
+        "        \"data\": [%s]\n"
+        "    }\n"
+        "]\n";
+
+
+    const uint32_t data_str_size = data_size * 4;
+
+    char* data_str_buffer = malloc(data_str_size);
+    char* data_str_buffer_write = data_str_buffer;
+    memset(data_str_buffer, 0, data_str_size);
+
+    for (int i = 0; i < data_size; ++i)
+    {
+        assert((data_str_buffer_write - data_str_buffer) < data_str_size);
+
+        int written = 0;
+        if (i == (data_size-1))
+        {
+            written = sprintf(data_str_buffer_write, "%hhu", data[i]);
+        }
+        else
+        {
+            written = sprintf(data_str_buffer_write, "%hhu,", data[i]);
+        }
+        data_str_buffer_write += written;
+    }
+
+    uint32_t template_size = strlen(template);
+    char* data_buffer = malloc(data_str_size + template_size);
+    memset(data_buffer, 0, data_str_size);
+
+    sprintf(data_buffer, template, data_str_buffer);
+
+    fwrite(data_buffer, strlen(data_buffer), 1, f);
+
+    fclose(f);
+
+    free(data_buffer);
+    free(data_str_buffer);
+}
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // From: https://stackoverflow.com/questions/1659440/32-bit-to-16-bit-floating-point-conversion
@@ -838,33 +889,33 @@ static void fill_base_directory(const char* directory_path, char* buf)
     memcpy(buf + 1, directory_path + start_copy, path_len - start_copy);
 }
 
-void write_meta_data(const char* output_path)
+#define ZERO_STR(the_path) memset(the_path, 0, sizeof(the_path))
+
+static void write_meta_data_go(const char* path)
 {
-    FILE* f = fopen(output_path, "wb");
+    FILE* f = fopen(path, "wb");
 
-    const char* meta_data_template =
-        "return\n"
-        "{\n"
-        "    name            = \"%s\",\n"
-        "    path            = \"%s\",\n"
-        "    irradiance_size = %d,\n"
-        "    prefilter_size  = %d,\n"
-        "    brdf_lut_size   = %d,\n"
+    const char* template =
+        "components {\n"
+        "  id: \"environment\"\n"
+        "  component: \"%s/environment.script\"\n"
+        "  position {\n"
+        "    x: 0.0\n"
+        "    y: 0.0\n"
+        "    z: 0.0\n"
+        "  }\n"
+        "  rotation {\n"
+        "    x: 0.0\n"
+        "    y: 0.0\n"
+        "    z: 0.0\n"
+        "    w: 1.0\n"
+        "  }\n"
         "}\n";
-
-    #define ZERO_STR(the_path) memset(the_path, 0, sizeof(the_path))
 
     char tmp_buffer[256];
     ZERO_STR(tmp_buffer);
 
-    char name_buffer[256];
-    ZERO_STR(name_buffer);
-
-    ensure_unix_path(g_app.m_Params.m_PathInput, tmp_buffer);
-    fill_base_name(tmp_buffer, name_buffer);
-
     char path_buffer[256];
-    ZERO_STR(tmp_buffer);
     ZERO_STR(path_buffer);
 
     ensure_unix_path(g_app.m_Params.m_PathDirectory, tmp_buffer);
@@ -872,16 +923,66 @@ void write_meta_data(const char* output_path)
 
     char data_buffer[512];
     ZERO_STR(data_buffer);
-    sprintf(data_buffer, meta_data_template, name_buffer, path_buffer,
-        g_app.m_DiffuseIrradiancePass.m_Size,
-        g_app.m_PrefilterPass.m_Size,
-        g_app.m_BRDFLutPass.m_Size);
+    sprintf(data_buffer, template, path_buffer);
 
     fwrite(data_buffer, strlen(data_buffer), 1, f);
 
     fclose(f);
+}
 
-    #undef ZERO_STR
+static void write_meta_data_script(const char* path)
+{
+    FILE* f = fopen(path, "wb");
+
+    const char* script_template =
+        "go.property(\"irradiance_size\", %d)\n"
+        "go.property(\"prefilter_size\", %d)\n"
+        "go.property(\"prefilter_count\", %d)\n"
+        "go.property(\"brdf_lut_size\", %d)\n"
+        // add prefilter as properties
+        "%s\n";
+
+    char prefilter_property_buffers[1024 * 2];
+    ZERO_STR(prefilter_property_buffers);
+
+    char* prefilter_property_write_ptr = prefilter_property_buffers;
+
+    for (int mip = 0; mip < g_app.m_PrefilterPass.m_MipmapCount; ++mip)
+    {
+        char resource_buffer_project_path[256];
+        ZERO_STR(resource_buffer_project_path);
+        sprintf(resource_buffer_project_path, "%s/prefilter_mm_%d.buffer", g_app.m_Params.m_PathDirectory, mip);
+
+        char tmp_buffer[256];
+        ZERO_STR(tmp_buffer);
+
+        ensure_unix_path(resource_buffer_project_path, tmp_buffer);
+        fill_base_directory(tmp_buffer, resource_buffer_project_path);
+
+        int written = sprintf(prefilter_property_write_ptr, "go.property(\"prefilter_mm_%d\", resource.buffer(\"%s\"))\n", mip, resource_buffer_project_path);
+        prefilter_property_write_ptr += written;
+    }
+
+    char data_buffer[1024 * 16];
+    ZERO_STR(data_buffer);
+    sprintf(data_buffer, script_template,
+        g_app.m_DiffuseIrradiancePass.m_Size,
+        g_app.m_PrefilterPass.m_Size,
+        g_app.m_PrefilterPass.m_MipmapCount,
+        g_app.m_BRDFLutPass.m_Size,
+        prefilter_property_buffers);
+
+    fwrite(data_buffer, strlen(data_buffer), 1, f);
+
+    fclose(f);
+}
+
+#undef ZERO_STR
+
+static void write_meta_data(const char* go_path, const char* script_path)
+{
+    write_meta_data_go(go_path);
+    write_meta_data_script(script_path);
 }
 
 void write_output_data()
@@ -899,7 +1000,7 @@ void write_output_data()
     if (g_app.m_Params.m_GenerateMask & GENERATE_DIFFUSE_IRRADIANCE)
     {
         char output_path_irridance[256];
-        sprintf(output_path_irridance, "%s/irradiance.bin", g_app.m_Params.m_PathDirectory);
+        sprintf(output_path_irridance, "%s/irradiance.buffer", g_app.m_Params.m_PathDirectory);
 
         LOG_INFO("Writing irradiance images to %s* with type (float16)\n", output_path_irridance);
 
@@ -926,7 +1027,8 @@ void write_output_data()
         uint16_t* half_float_buffer          = (uint16_t*) malloc(data_size / 2);
 
         float32_to_float16(pixels, data_size / sizeof(float), half_float_buffer);
-        write_bytes_to_file(output_path_irridance, (uint8_t*) half_float_buffer, half_float_buffer_data_size);
+
+        write_buffer_to_file(output_path_irridance, (uint8_t*) half_float_buffer, half_float_buffer_data_size);
 
         free(pixels_side);
         free(pixels);
@@ -964,14 +1066,14 @@ void write_output_data()
             }
 
             char output_path_prefite_slice[128];
-            sprintf(output_path_prefite_slice, "%s_mm_%d.bin", output_path_prefiter_base, mip);
+            sprintf(output_path_prefite_slice, "%s_mm_%d.buffer", output_path_prefiter_base, mip);
 
             uint32_t half_float_buffer_data_size = mipmap_data_size / 2;
             uint16_t* half_float_buffer          = (uint16_t*) malloc(mipmap_data_size / 2);
 
             float32_to_float16(pixels, mipmap_data_size / sizeof(float), half_float_buffer);
 
-            write_bytes_to_file(output_path_prefite_slice, (uint8_t*) half_float_buffer, half_float_buffer_data_size);
+            write_buffer_to_file(output_path_prefite_slice, (uint8_t*) half_float_buffer, half_float_buffer_data_size);
 
             free(half_float_buffer);
         }
@@ -984,7 +1086,7 @@ void write_output_data()
     if (g_app.m_Params.m_GenerateMask & GENERATE_BRDF_LUT)
     {
         char output_path_brdf_lut[256];
-        sprintf(output_path_brdf_lut, "%s/brdf_lut.bin", g_app.m_Params.m_PathDirectory);
+        sprintf(output_path_brdf_lut, "%s/brdf_lut.buffer", g_app.m_Params.m_PathDirectory);
         LOG_INFO("Writing BRDF Lut to %s\n", output_path_brdf_lut);
 
         uint32_t pixel_count    = g_app.m_BRDFLutPass.m_Size * g_app.m_BRDFLutPass.m_Size * 4;
@@ -996,19 +1098,21 @@ void write_output_data()
         uint16_t* half_float_buffer          = (uint16_t*) malloc(half_float_buffer_data_size);
 
         float32_to_float16(pixels, pixel_count, half_float_buffer);
-
-        write_bytes_to_file(output_path_brdf_lut, (uint8_t*) half_float_buffer, half_float_buffer_data_size);
+        write_buffer_to_file(output_path_brdf_lut, (uint8_t*) half_float_buffer, half_float_buffer_data_size);
 
         free(half_float_buffer);
         free(pixels);
     }
 
-    // Generate lua table
+    // Generate meta data
     if (g_app.m_Params.m_GenerateMetaData)
     {
-        char output_path_meta_data[256];
-        sprintf(output_path_meta_data, "%s/meta.lua", g_app.m_Params.m_PathDirectory);
-        write_meta_data(output_path_meta_data);
+        char output_path_go[256];
+        sprintf(output_path_go, "%s/environment.go", g_app.m_Params.m_PathDirectory);
+
+        char output_path_script[256];
+        sprintf(output_path_script, "%s/environment.script", g_app.m_Params.m_PathDirectory);
+        write_meta_data(output_path_go, output_path_script);
     }
 
     LOG_VERBOSE("Writing complete!\n");
