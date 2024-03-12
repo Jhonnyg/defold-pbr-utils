@@ -353,11 +353,11 @@ static void make_brdf_lut_pass()
 
     g_app.m_BRDFLutPass.m_Pass = sg_make_pass(&brdf_lut_pass_desc);
 
-    g_app.m_BRDFLutPass.m_PassAction.colors[0].action  = SG_ACTION_CLEAR;
-    g_app.m_BRDFLutPass.m_PassAction.colors[0].value.r = 0.0f;
-    g_app.m_BRDFLutPass.m_PassAction.colors[0].value.g = 0.0f;
-    g_app.m_BRDFLutPass.m_PassAction.colors[0].value.b = 0.0f;
-    g_app.m_BRDFLutPass.m_PassAction.colors[0].value.a = 1.0f;
+    //g_app.m_BRDFLutPass.m_PassAction.colors[0].load_action  = SG_LOADACTION_CLEAR;
+    g_app.m_BRDFLutPass.m_PassAction.colors[0].clear_value.r = 0.0f;
+    g_app.m_BRDFLutPass.m_PassAction.colors[0].clear_value.g = 0.0f;
+    g_app.m_BRDFLutPass.m_PassAction.colors[0].clear_value.b = 0.0f;
+    g_app.m_BRDFLutPass.m_PassAction.colors[0].clear_value.a = 1.0f;
 
     float vertices[] = {
         -1.0f, -1.0f, 0.0f, 0.0f,
@@ -400,11 +400,11 @@ static void make_prefilter_pass()
     g_app.m_PrefilterPass.m_Size        = 256;
     g_app.m_PrefilterPass.m_MipmapCount = 1 + floor(log2(g_app.m_PrefilterPass.m_Size));
 
-    g_app.m_PrefilterPass.m_PassAction.colors[0].action  = SG_ACTION_CLEAR;
-    g_app.m_PrefilterPass.m_PassAction.colors[0].value.r = 0.0f;
-    g_app.m_PrefilterPass.m_PassAction.colors[0].value.g = 0.0f;
-    g_app.m_PrefilterPass.m_PassAction.colors[0].value.b = 0.0f;
-    g_app.m_PrefilterPass.m_PassAction.colors[0].value.a = 1.0f;
+    //g_app.m_PrefilterPass.m_PassAction.colors[0].load_action  = SG_LOADACTION_CLEAR;
+    g_app.m_PrefilterPass.m_PassAction.colors[0].clear_value.r = 0.0f;
+    g_app.m_PrefilterPass.m_PassAction.colors[0].clear_value.g = 0.0f;
+    g_app.m_PrefilterPass.m_PassAction.colors[0].clear_value.b = 0.0f;
+    g_app.m_PrefilterPass.m_PassAction.colors[0].clear_value.a = 1.0f;
 
     sg_image_desc prefilter_pass_img_desc = {
         .type          = SG_IMAGETYPE_CUBE,
@@ -479,11 +479,11 @@ static void make_prefilter_pass()
 static void make_diffuse_irradiance_pass()
 {
     g_app.m_DiffuseIrradiancePass.m_Size = 64;
-    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].action  = SG_ACTION_CLEAR;
-    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].value.r = 0.25f;
-    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].value.g = 0.25f;
-    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].value.b = 0.25f;
-    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].value.a = 1.0f;
+    //g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].load_action  = SG_LOADACTION_CLEAR;
+    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].clear_value.r = 0.25f;
+    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].clear_value.g = 0.25f;
+    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].clear_value.b = 0.25f;
+    g_app.m_DiffuseIrradiancePass.m_PassAction.colors[0].clear_value.a = 1.0f;
 
     sg_image_desc diffuse_irridance_img_desc = {
         .type          = SG_IMAGETYPE_CUBE,
@@ -548,11 +548,11 @@ static void make_diffuse_irradiance_pass()
 static void make_environment_pass()
 {
     g_app.m_EnvironmentPass.m_Size                         = 1024;
-    g_app.m_EnvironmentPass.m_PassAction.colors[0].action  = SG_ACTION_CLEAR;
-    g_app.m_EnvironmentPass.m_PassAction.colors[0].value.r = 0.25f;
-    g_app.m_EnvironmentPass.m_PassAction.colors[0].value.g = 0.25f;
-    g_app.m_EnvironmentPass.m_PassAction.colors[0].value.b = 0.25f;
-    g_app.m_EnvironmentPass.m_PassAction.colors[0].value.a = 1.0f;
+    //g_app.m_EnvironmentPass.m_PassAction.colors[0].load_action  = SG_LOADACTION_CLEAR;
+    g_app.m_EnvironmentPass.m_PassAction.colors[0].clear_value.r = 0.25f;
+    g_app.m_EnvironmentPass.m_PassAction.colors[0].clear_value.g = 0.25f;
+    g_app.m_EnvironmentPass.m_PassAction.colors[0].clear_value.b = 0.25f;
+    g_app.m_EnvironmentPass.m_PassAction.colors[0].clear_value.a = 1.0f;
 
     sg_image_desc environment_pass_image_desc = {
         .type          = SG_IMAGETYPE_CUBE,
@@ -560,7 +560,7 @@ static void make_environment_pass()
         .width         = g_app.m_EnvironmentPass.m_Size,
         .height        = g_app.m_EnvironmentPass.m_Size,
         .pixel_format  = SG_PIXELFORMAT_RGBA32F,
-        .sample_count  = 4,
+        .sample_count  = 1,
         .min_filter    = SG_FILTER_LINEAR_MIPMAP_LINEAR,
         .mag_filter    = SG_FILTER_LINEAR,
         .wrap_u        = SG_WRAP_REPEAT,
@@ -576,7 +576,7 @@ static void make_environment_pass()
         .width         = g_app.m_EnvironmentPass.m_Size,
         .height        = g_app.m_EnvironmentPass.m_Size,
         .pixel_format  = SG_PIXELFORMAT_DEPTH,
-        .sample_count  = 4,
+        .sample_count  = 1,
         .label         = "cubemap-depth-rt"
     };
 
@@ -603,7 +603,7 @@ static void make_environment_pass()
             .write_enabled = true,
         },
         .cull_mode              = SG_CULLMODE_NONE,
-        .sample_count           = 4,
+        .sample_count           = 1,
         .label                  = "pipeline_fullscreen"
     };
 
@@ -616,11 +616,11 @@ static void make_environment_pass()
 
 static void make_display_pass(void)
 {
-    g_app.m_DisplayPass.m_PassAction.colors[0].action = SG_ACTION_CLEAR;
-    g_app.m_DisplayPass.m_PassAction.colors[0].value.r = 0.0f;
-    g_app.m_DisplayPass.m_PassAction.colors[0].value.g = 0.0f;
-    g_app.m_DisplayPass.m_PassAction.colors[0].value.b = 0.0f;
-    g_app.m_DisplayPass.m_PassAction.colors[0].value.a = 1.0f;
+    g_app.m_DisplayPass.m_PassAction.colors[0].load_action = SG_LOADACTION_CLEAR;
+    g_app.m_DisplayPass.m_PassAction.colors[0].clear_value.r = 0.0f;
+    g_app.m_DisplayPass.m_PassAction.colors[0].clear_value.g = 0.0f;
+    g_app.m_DisplayPass.m_PassAction.colors[0].clear_value.b = 0.0f;
+    g_app.m_DisplayPass.m_PassAction.colors[0].clear_value.a = 1.0f;
 
     float vertices[] = {
         -1.0f, -1.0f, 0.0f, 0.0f,
@@ -1142,9 +1142,15 @@ void frame(void)
             sg_apply_bindings(&g_app.m_EnvironmentPass.m_Bindings);
             sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_cubemap_uniforms, &cubemap_uniform_data);
 
+            _sg_image_t* img_before = _sg_lookup_image(&_sg.pools, g_app.m_EnvironmentPass.m_Image.id);
+
             sg_draw(0, g_app.m_Cube.num_elements, 1);
             sg_end_pass();
+
+            _sg_image_t* img_after = _sg_lookup_image(&_sg.pools, g_app.m_EnvironmentPass.m_Image.id);
         }
+
+        _SG_GL_CHECK_ERROR();
 
         sg_generate_mipmaps(g_app.m_EnvironmentPass.m_Image);
 
@@ -1235,15 +1241,13 @@ void frame(void)
         LOG_INFO("Finished generating!\n");
 
     #if 0
-        /*
-        for (int mip = 0; mip < num_mipmaps; ++mip)
+        for (int mip = 0; mip < g_app.m_PrefilterPass.m_MipmapCount; ++mip)
         {
             for (int i = 0; i < 6; ++i)
             {
                 write_prefilter(i, mip);
             }
         }
-        */
 
         write_side(0);
         write_side(1);
