@@ -44,7 +44,14 @@ SOKOL_SDHC_CMD=${BUILD_FOLDER}/${SOKOL_SDHC}
 
 if [ ! -f ${BUILD_FOLDER}/${SOKOL_SDHC} ]; then
     if [ "$PLATFORM" == "macos" ]; then
-        curl -L https://github.com/floooh/sokol-tools-bin/raw/e64ac04c971e54d4da4f5da087afe21aa27885bc/bin/osx_arm64/sokol-shdc --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
+
+        if [[ $(uname -m) == 'arm64' ]]; then
+            export SOKOL_SDHC_ARCH=osx_arm64
+        else
+            export SOKOL_SDHC_ARCH=osx
+        fi
+
+        curl -L https://github.com/floooh/sokol-tools-bin/raw/e64ac04c971e54d4da4f5da087afe21aa27885bc/bin/${SOKOL_SDHC_ARCH}/sokol-shdc --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
         chmod +x ${BUILD_FOLDER}/${SOKOL_SDHC}
     fi
 
