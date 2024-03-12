@@ -6,6 +6,20 @@ on:
       - '*'
 
 jobs:
+    build-linux:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v2
+        - name: Install dependencies for Linux
+          run: sudo apt-get install -y libxi-dev libx11-dev libxcursor-dev libgl1-mesa-dev
+        - name: Build PBR Utils for Linux
+          run: ./build.sh
+        - name: Archive results
+          uses: actions/upload-artifact@v3
+          with:
+            name: defold-pbr-utils-linux
+            path: ./build/pbr-utils
+
     build-windows:
       runs-on: windows-latest
       steps:

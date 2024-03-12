@@ -4,7 +4,7 @@ export PLATFORM_EXT=""
 
 if [ "$(uname)" == "Darwin" ]; then
     export PLATFORM="macos"
-elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW64_NT" ]; then
+elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW64_NT" ] || [ "$(expr substr $(uname -s) 1 7)" == "MSYS_NT" ]; then
     export PLATFORM="windows"
     export PLATFORM_EXT=".exe"
 else
@@ -27,6 +27,11 @@ if [ ! -f "$PWD/${BUILD_FOLDER}/$GENIE" ]; then
 
     if [ "$PLATFORM" == "windows" ]; then
         curl https://github.com/bkaradzic/bx/raw/master/tools/bin/windows/genie.exe --output-dir ${BUILD_FOLDER} -o ${GENIE} -L
+    fi
+
+    if [ "$PLATFORM" == "linux" ]; then
+        curl https://github.com/bkaradzic/bx/raw/master/tools/bin/linux/genie --output-dir ${BUILD_FOLDER} -o ${GENIE} -L
+        chmod +x $GENIE_CMD
     fi
 fi
 
@@ -57,6 +62,11 @@ if [ ! -f ${BUILD_FOLDER}/${SOKOL_SDHC} ]; then
 
     if [ "$PLATFORM" == "windows" ]; then
         curl  https://raw.githubusercontent.com/floooh/sokol-tools-bin/master/bin/win32/sokol-shdc.exe --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
+    fi
+
+    if [ "$PLATFORM" == "linux" ]; then
+        curl  https://raw.githubusercontent.com/floooh/sokol-tools-bin/master/bin/linux/sokol-shdc --output-dir ${BUILD_FOLDER} -o ${SOKOL_SDHC}
+        chmod +x ${BUILD_FOLDER}/${SOKOL_SDHC}
     fi
 fi
 
