@@ -35,8 +35,8 @@ jobs:
               ./build/pbr-utils.exe
     build-macos:
       strategy:
-      matrix:
-        platform: [x86_64-macos, arm64-macos]
+        matrix:
+          platform: [x86_64-macos, arm64-macos]
       runs-on: macos-latest
       steps:
         - uses: actions/checkout@v2
