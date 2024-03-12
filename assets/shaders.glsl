@@ -189,7 +189,7 @@ void main()
     vec3 R = N;
     vec3 V = R;
 
-    const uint SAMPLE_COUNT = 1024u;
+    const uint SAMPLE_COUNT = 2048u;// 1024u;
     vec3 prefilteredColor = vec3(0.0);
     float totalWeight = 0.0;
 
@@ -209,7 +209,8 @@ void main()
             float HdotV = max(dot(H, V), 0.0);
             float pdf = D * NdotH / (4.0 * HdotV) + 0.0001;
 
-            float resolution = 1024.0; // resolution of source cubemap (per face)
+            // FIXE: This should be variable!!
+            float resolution = 2048.0; // resolution of source cubemap (per face)
             float saTexel  = 4.0 * PI / (6.0 * resolution * resolution);
             float saSample = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001);
 
